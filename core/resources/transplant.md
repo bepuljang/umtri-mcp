@@ -12,10 +12,11 @@ anything that the normal rules would block.
 ## While `transplanting = true`
 
 You MAY:
-- **Add or edit nodes in any season, including past seasons.** The usual
-  "cannot create/move into a past season" and "grown (past-season) nodes are
-  immutable" rules are lifted, so you can reconstruct the project's history
-  season by season.
+- **Restructure nodes in any season, including past seasons.** The usual
+  "cannot create/move into a past season" rule and the lock on a grown node's
+  `parent` / `season` / `type` / `sproutedAt` are lifted, so you can reconstruct
+  the project's history season by season. (Content fields on grown nodes are
+  editable even without transplanting — see below.)
 - **Hard-delete import mistakes.** `delete_node` accepts `hard: true` and the
   active-descendant guard is lifted (subtree cascades). Use this to remove
   wrongly-imported nodes for good. Soft delete is still the default; reach for
@@ -48,10 +49,26 @@ remove it.
 
 ## After rooting (`transplanting = false`)
 
-All normal guards return: past seasons reject new/moved nodes, grown nodes are
-immutable, `delete_node` is soft-only and refuses nodes with active children.
-Treat the tree as settled — small, observable changes only
+All normal guards return: past seasons reject new/moved nodes, grown nodes lock
+their shape and timeline, `delete_node` is soft-only and refuses nodes with
+active children. Treat the tree as settled — small, observable changes only
 (see umtri://about/vision).
+
+### What stays editable on a grown node
+
+Rooting does **not** freeze a past node's content. Without transplanting you can
+still patch `label`, `description`, `metadata` and `tags`; only `parent`,
+`season`, `type` and `sproutedAt` are refused.
+
+The line is whether the change leaves a trail. Content edits are recorded in the
+ground's event log with a before/after diff, so history stays recoverable.
+Shape and timeline edits rewrite what the tree *was*, which is why they need the
+explicit transplanting state.
+
+This matters in practice: when code is refactored and files move, the
+`metadata.implements` of past-season nodes goes stale. Fix it in place — do not
+ask for transplanting just to correct a path, because that unlocks every past
+season at once for a change that needed none of it.
 
 ## How to behave
 

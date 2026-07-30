@@ -620,7 +620,7 @@ export function registerTools(server, { api }) {
     'update_node',
     {
       title: 'Update a node',
-      description: 'Partial update of a node. Patchable fields: label, type, parent, season, description, tags, metadata, sproutedAt. Type change reclassifies role; parent change recomputes the ltree path automatically. Moving a node into a season whose state is `past` is rejected, and grown (past-season) nodes are immutable — UNLESS the ground is transplanting (project.transplanting=true), where both restrictions are lifted so historical structure can be reconstructed (see umtri://rules/transplant). Same protocol validation as create_node — reject on hierarchy violations, warn on soft issues.',
+      description: 'Partial update of a node. Patchable fields: label, type, parent, season, description, tags, metadata, sproutedAt. Type change reclassifies role; parent change recomputes the ltree path automatically. On a grown (past-season) node, only the tree\'s shape and timeline are locked — parent, season, type and sproutedAt are rejected. Content fields (label, description, metadata, tags) stay editable, so you can keep metadata.implements current when code moves without reopening transplanting. Moving any node into a `past` season is rejected. Both restrictions lift while the ground is transplanting (project.transplanting=true), so historical structure can be reconstructed (see umtri://rules/transplant). Same protocol validation as create_node — reject on hierarchy violations, warn on soft issues.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         id: z.string().min(1).describe('Node id.'),
