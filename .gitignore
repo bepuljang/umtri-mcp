@@ -1,2 +1,4 @@
+# 공개 미러(bepuljang/umtri-mcp)로 그대로 동기화된다.
+# 미러에서만 만들어지는 것들 — npm 타르볼에는 files 화이트리스트가 이미 막고 있다.
 node_modules/
 *.tgz
