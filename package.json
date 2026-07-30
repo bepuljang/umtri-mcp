@@ -1,0 +1,51 @@
+{
+  "name": "umtri-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Umtri — give your AI coding agent a persistent map of your project's structure, dependencies, and bugs.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "umtri",
+    "ai",
+    "agent",
+    "codebase",
+    "architecture",
+    "dependency-graph",
+    "blast-radius",
+    "claude"
+  ],
+  "homepage": "https://umtri.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bepuljang/umtri-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bepuljang/umtri-mcp/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Umtri <support@umtri.io>",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "umtri-mcp": "./server.js"
+  },
+  "files": [
+    "server.js",
+    "core/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.0"
+  }
+}
