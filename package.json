@@ -1,7 +1,8 @@
 {
   "name": "umtri-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for Umtri — give your AI coding agent a persistent map of your project's structure, dependencies, and bugs.",
+  "mcpName": "io.umtri/umtri",
   "keywords": [
     "mcp",
     "model-context-protocol",
