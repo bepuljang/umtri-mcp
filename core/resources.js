@@ -44,6 +44,13 @@ const RESOURCES = [
     description: 'Nodes marked plan:true are the human\'s structural brief (intent expressed as nodes, not a prompt). Read them as instructions, realize the code, attach metadata.implements (required), keep new detail as plan, and leave committing to the human. Read when get_graph shows any plan:true node.',
   },
   {
+    name: 'commit-sync',
+    uri: 'umtri://rules/commit-sync',
+    file: 'commit-sync.md',
+    title: 'Keep the ground in step with commits',
+    description: 'Umtri never reads git — nodes drift unless something records the change. Recommends writing a short commit-sync policy into the repo\'s own agent rules file (CLAUDE.md/AGENTS.md), with a snippet to adapt. Read when setting Umtri up in a repo, or when a commit turns out to have left the tree behind.',
+  },
+  {
     name: 'system-structure',
     uri: 'umtri://rules/system-structure',
     file: 'system-structure.md',

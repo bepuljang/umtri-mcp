@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { createApiClient } from './core/api-client.js';
 import { registerTools } from './core/tools.js';
 import { registerResources } from './core/resources.js';
+import { SERVER_INSTRUCTIONS } from './core/instructions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESOURCES_DIR = join(__dirname, 'core', 'resources');
@@ -44,7 +45,7 @@ const api = createApiClient({
 const server = new McpServer({
   name: 'umtri-mcp',
   version: VERSION,
-});
+}, { instructions: SERVER_INSTRUCTIONS });
 
 registerTools(server, { api });
 registerResources(server, { resourcesDir: RESOURCES_DIR });

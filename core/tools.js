@@ -64,12 +64,28 @@ function computeDormantSet(nodes) {
   return dormant;
 }
 
-// 버그 status 필터. 기본(active)은 open/in_progress만 — 해결된(resolved/closed) 침식은
-// 트리에서 노이즈. 'all'이면 전부, 특정 status면 그것만.
+// 버그 필터 어휘 → DB status 집합. 도구 표면은 제품 어휘(wild/chasing/catched)를 쓴다 —
+// UI·vocabulary.md가 쓰는 말과 같아야 사람이 본 화면과 도구 응답이 같은 것을 가리킨다.
+// DB 상태값(open/in_progress/…)도 계속 받는다: 기존 호출자를 깨지 않기 위해서다.
+//
+// 'open'은 여기서 **wild와 다르다.** REST의 status=open은 store에서 open+in_progress로
+// 번역되고(앱 대시보드의 Bugs Alive가 그 의미에 기대고 있다) 그래서 REST로는 순수 wild를
+// 뽑을 수 없다. 그 갈래는 이 표에서만 갈린다.
+const BUG_STATUS_SETS = {
+  active:      ['open', 'in_progress'],
+  wild:        ['open'],
+  chasing:     ['in_progress'],
+  catched:     ['resolved', 'closed'],
+  open:        ['open', 'in_progress'],  // REST status=open과 같은 의미 (하위호환)
+  in_progress: ['in_progress'],
+  resolved:    ['resolved'],
+  closed:      ['closed'],
+};
+
 function filterBugsByStatus(bugs, bugStatus) {
   if (!Array.isArray(bugs) || bugStatus === 'all') return bugs;
-  if (bugStatus && bugStatus !== 'active') return bugs.filter((b) => b.status === bugStatus);
-  return bugs.filter((b) => b.status !== 'resolved' && b.status !== 'closed');
+  const allowed = BUG_STATUS_SETS[bugStatus] || BUG_STATUS_SETS.active;
+  return bugs.filter((b) => allowed.includes(b.status));
 }
 
 // project.metadata에서 UI 전용 무거운 키(아이콘 base64 등)를 제거 — LLM 컨텍스트엔 무의미.
@@ -323,12 +339,12 @@ export function registerTools(server, { api }) {
         slug: z.string().min(1).describe('Ground slug (from list_projects).'),
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for compact nodes; full for raw shape with all fields.'),
         rootId: z.string().optional().describe('Scope to this node and its descendants — read one trunk or limb at a time. Get the id from a prior get_graph (e.g. maxType="trunk" for a cheap skeleton). Bugs are scoped to the subtree; edges/apis that cross the subtree boundary are still returned (boundary:true) with their outside endpoint in externalNodes.'),
-        depth: z.number().int().min(0).optional().describe('With rootId: how many levels below the root to include (0 = just the root, 1 = root + direct children). Omit for the whole subtree.'),
+        depth: z.coerce.number().int().min(0).optional().describe('With rootId: how many levels below the root to include (0 = just the root, 1 = root + direct children). Omit for the whole subtree.'),
         maxType: z.enum(['trunk', 'limb', 'twig', 'leaf', 'vein']).optional().describe('Layer ceiling — return only nodes at this level or higher (trunk is highest). maxType="twig" yields the structural skeleton without leaves/veins. Great for a cheap overview before drilling in with rootId.'),
         role: z.enum(['structure', 'object', 'action']).optional().describe('Cross-section by role (structure=trunk/limb/twig, object=leaf, action=vein). Parents may fall outside the result.'),
         season: z.string().optional().describe('Born-in delta — return only nodes that first appeared in this season (season id from list_seasons): what grew that season.'),
         descriptions: z.enum(['none', 'excerpt', 'full']).optional().describe('How much of each node/bug description to include in summary view: none (drop them — lightest structural read), excerpt (200-char preview, default), or full (verbatim). Ignored when view="full" (always verbatim).'),
-        bugStatus: z.enum(['active', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional().describe('Which bugs to include. Default "active" = open + in_progress only (resolved/closed are healed erosion — noise on the tree). "all" for every bug, or a specific status. Use list_bugs for richer bug queries.'),
+        bugStatus: z.enum(['active', 'wild', 'chasing', 'catched', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional().describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress) — catched ones are healed erosion, noise on the tree. "wild" for the untouched only, "catched" for healed, "all" for every bug. Raw DB statuses still work. Use list_bugs for richer bug queries (limit/order), get_bug for one you can name.'),
       }),
     },
     async ({ slug, view, rootId, depth, maxType, role, season, descriptions, bugStatus }) => {
@@ -367,7 +383,7 @@ export function registerTools(server, { api }) {
         node: z.string().optional().describe('Start node id. Provide this OR bug.'),
         bug: z.string().optional().describe('Start from this bug\'s target. Provide this OR node.'),
         direction: z.enum(['affected', 'dependsOn', 'both']).optional().describe('affected (default): what breaks if the start breaks. dependsOn: what the start relies on. both: union.'),
-        maxDepth: z.number().int().min(0).optional().describe('Max hops to traverse. Omit for unbounded.'),
+        maxDepth: z.coerce.number().int().min(0).optional().describe('Max hops to traverse. Omit for unbounded.'),
       }),
     },
     async ({ slug, node, bug, direction, maxDepth }) => {
@@ -388,19 +404,37 @@ export function registerTools(server, { api }) {
     'list_bugs',
     {
       title: 'List bugs of a ground',
-      description: 'Returns bugs (issues eroding the ground). Optional status filter. Each bug has a score (0–8 change-risk; 8 = riskiest). Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata.',
+      description: 'Scans the bugs (issues eroding the ground) of one ground. Looking at ONE bug you already know the number/id of? Call get_bug instead — no need to list. Bugs default to status="active" (wild + chasing): a healed bug is history, and history is not what a scan is for. Ask for "catched" or "all" when you actually want it. Status speaks the product\'s own words — wild (found, nobody on it) → chasing (someone is fixing it) → catched (it landed) — the same words the UI shows. Each bug has a score (0–8 change-risk; 8 = riskiest). Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, seq (the number a human says, "#14"), target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata. Use limit + order to bound a scan (e.g. the 5 newest) instead of pulling every bug.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
-        status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional()
-          .describe('Filter by status. Omit to return all.'),
+        status: z.enum(['active', 'wild', 'chasing', 'catched', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional()
+          .describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress). "wild" = found but untouched, "chasing" = someone is on it, "catched" = healed (resolved + closed), "all" = every bug. The raw DB statuses are accepted too; note "open" means wild + chasing there (REST semantics), so pass "wild" when you want only the untouched ones.'),
+        limit: z.coerce.number().int().positive().optional().describe('Return at most this many bugs (applied after the status filter). Omit for all matching.'),
+        order: z.enum(['asc', 'desc']).optional().describe('By creation time: "asc" oldest first (default), "desc" newest first. Pair with limit for "the N newest".'),
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for a compact list; full for verbatim descriptions + metadata.'),
       }),
     },
-    async ({ slug, status, view }) => {
+    async ({ slug, status, limit, order, view }) => {
       try {
+        const want = status || 'active';
         const qs = ['impact=true']; // 각 버그에 impactCount(blast radius 크기) 자동 첨부
-        if (status) qs.push(`status=${encodeURIComponent(status)}`);
-        const bugs = await api.get(`/api/projects/${encodeURIComponent(slug)}/bugs?${qs.join('&')}`);
+        if (order) qs.push(`order=${encodeURIComponent(order)}`);
+        // status·limit을 서버로 넘기는 건 REST 필터가 원하는 집합과 **정확히** 같을 때만이다.
+        // wild(순수 open)·catched(resolved+closed)는 REST에 대응 값이 없어 여기서 거른다 —
+        // 그때 limit까지 넘기면 걸러지기 전 개수로 잘려 결과가 모자란다.
+        const REST_EXACT = {
+          active: 'open', open: 'open',            // REST의 open = open + in_progress
+          chasing: 'in_progress', in_progress: 'in_progress',
+          resolved: 'resolved', closed: 'closed',
+        };
+        const exact = REST_EXACT[want] || null;    // wild·catched는 REST에 대응 값이 없다
+        if (exact) qs.push(`status=${exact}`);
+        if (exact || want === 'all') { if (limit) qs.push(`limit=${limit}`); }
+        let bugs = await api.get(`/api/projects/${encodeURIComponent(slug)}/bugs?${qs.join('&')}`);
+        if (!exact && want !== 'all') {
+          bugs = filterBugsByStatus(bugs, want);
+          if (limit) bugs = bugs.slice(0, limit);
+        }
         return jsonResult(view === 'full' ? bugs : compressBugs(bugs));
       } catch (e) { return errorResult(e); }
     },
@@ -410,10 +444,10 @@ export function registerTools(server, { api }) {
     'get_bug',
     {
       title: 'Get one bug of a ground',
-      description: 'Returns a single bug by reference. `ref` accepts either the human-facing number shown in the UI (seq — "14" or #14) or the internal id (bug-<uuid>). Use this when a human names a bug by its number; use list_bugs to scan. The response carries the full description and metadata, plus impact — the blast radius reached from the bug\'s target (reachedCount, the reached nodes with hop distance, and other active bugs sitting in that radius). Numbers are per-ground and never reused, so a deleted bug leaves a gap rather than shifting the others. Returns an error if no bug matches.',
+      description: 'Returns a single bug by reference — the cheap path when you already know which bug you mean. `ref` accepts either the human-facing number shown in the UI (seq — "14" or #14) or the internal id (bug-<uuid>), so a human saying "#8" needs no listing at all. Unlike list_bugs this ignores status: a catched bug is still readable by number, which is how you review what a past fix actually did. Use list_bugs only to scan for bugs you cannot yet name. The response carries the full description and metadata, plus impact — the blast radius reached from the bug\'s target (reachedCount, the reached nodes with hop distance, and other active bugs sitting in that radius). Numbers are per-ground and never reused, so a deleted bug leaves a gap rather than shifting the others. Returns an error if no bug matches.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
-        ref: z.union([z.string().min(1), z.number().int().positive()])
+        ref: z.union([z.string().min(1), z.coerce.number().int().positive()])
           .describe('Bug number (seq, e.g. 14) or internal id (bug-<uuid>).'),
       }),
     },
@@ -452,7 +486,7 @@ export function registerTools(server, { api }) {
       description: 'Returns the append-only change history (most recent first) of a ground: node/edge/api/bug create, update (with a field-level diff {from,to}), delete, and plan_commit. Each event carries the actor ("user:<id>" for humans, "token:<id>" for agents/automation), a summary label, and for updates a diff. Use it to answer "what changed, when, and by whom" — e.g. a bug\'s status transitions or a node\'s edits over time. Filter with entityType/entityId to get a single entity\'s timeline. Note: git commits recorded via record_commit live in a node\'s metadata.commits, not here.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
-        limit: z.number().int().positive().max(200).optional().describe('Max events to return (default 50, cap 200).'),
+        limit: z.coerce.number().int().positive().max(200).optional().describe('Max events to return (default 50, cap 200).'),
         before: z.string().optional().describe('ISO timestamp — return events strictly older than this (keyset pagination).'),
         entityType: z.enum(['node', 'edge', 'api', 'bug']).optional().describe('Filter to one entity type.'),
         entityId: z.string().optional().describe('Filter to one entity\'s timeline (usually paired with entityType).'),
@@ -497,7 +531,7 @@ export function registerTools(server, { api }) {
         }).describe('Bug target. Use {kind:"ground"} when the bug is about the project as a whole.'),
         description: z.string().optional().describe('Longer details on what is wrong (markdown allowed).'),
         solution: z.string().optional().describe('How to fix it. At report time this is the plan/idea; update it to what was actually applied when you resolve. Markdown allowed. Omit if you do not know yet.'),
-        score: z.number().int().min(0).max(8).optional().describe('Change risk 0–8 (8 = riskiest: critical impact × complex fix). Defaults to 4. See tool description for the rubric.'),
+        score: z.coerce.number().int().min(0).max(8).optional().describe('Change risk 0–8 (8 = riskiest: critical impact × complex fix). Defaults to 4. See tool description for the rubric.'),
         status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional()
           .describe('Defaults to "open".'),
       }),
@@ -751,7 +785,7 @@ export function registerTools(server, { api }) {
     'record_commit',
     {
       title: 'Record a git commit onto the nodes it touched',
-      description: 'Configuration record (CI/CD). Given a commit SHA and the files it changed, finds nodes whose metadata.implements include any of those files and appends the commit (sha + timestamp + optional message) to their metadata.commits (deduped by sha). Returns the matched node ids. When one commit touches several nodes that are NOT yet connected, the response also carries coChangeCandidates[] ({a, aLabel, b, bLabel}) — nodes that change together are dependency candidates; review them and add a create_edge/create_api where a real relation exists (not auto-created; suppressed for large multi-node commits). Umtri does not run jobs or read git itself — a GitHub Action / CI step or an agent supplies the sha+files. See umtri://rules/plan.',
+      description: 'Configuration record (CI/CD). Given a commit SHA and the files it changed, finds nodes whose metadata.implements include any of those files and appends the commit (sha + timestamp + optional message) to their metadata.commits (deduped by sha). Returns the matched node ids. When one commit touches several nodes that are NOT yet connected, the response also carries coChangeCandidates[] ({a, aLabel, b, bLabel}) — nodes that change together are dependency candidates; review them and add a create_edge/create_api where a real relation exists (not auto-created; suppressed for large multi-node commits). Umtri does not run jobs or read git itself — a GitHub Action / CI step or an agent supplies the sha+files. Recording a commit is the LAST step: first make sure the change is in the tree (new unit → create_node with metadata.implements; moved file → update_node), otherwise the sha lands on the nodes that happen to exist and the new ones stay invisible. A repo that keeps forgetting should write the habit down — see umtri://rules/commit-sync. See also umtri://rules/plan.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         sha: z.string().min(1).describe('Commit SHA (short or full).'),
@@ -905,7 +939,7 @@ export function registerTools(server, { api }) {
         id: z.string().min(1).describe('Bug id.'),
         patch: z.object({
           status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
-          score: z.number().int().min(0).max(8).optional().describe('Change risk 0–8 (8 = riskiest). See create_bug for the rubric.'),
+          score: z.coerce.number().int().min(0).max(8).optional().describe('Change risk 0–8 (8 = riskiest). See create_bug for the rubric.'),
           title: z.string().min(1).max(200).optional(),
           description: z.string().nullable().optional().describe('What is wrong.'),
           solution: z.string().nullable().optional().describe('How it is being / was fixed. Rewrite this to the actually-applied fix when you set status="resolved" — a stale plan left behind is worse than an empty field. null clears it.'),
