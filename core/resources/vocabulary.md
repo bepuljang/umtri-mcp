@@ -98,7 +98,7 @@ nodes (in `type` or `label`) is the most common mistake.
 
 - Bug / error / issue → `bugs` table — use `create_bug`
 - API / endpoint / integration → `apis` table — use `create_api`
-- Season / sprint / epoch → human-only, see `umtri://rules/seasons-human-only`
+- Season / sprint / epoch → needs the user's confirmation, see `umtri://rules/seasons`
 - Dependency / data flow → `edges` table — use `create_edge`
 
 ## Bug lifecycle — one step at a time

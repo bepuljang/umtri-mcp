@@ -41,7 +41,7 @@ back onto the nodes. The human commits when satisfied.
 ## Boundaries
 
 - Plan is independent of seasons; you still cannot create or modify seasons
-  (see umtri://rules/seasons-human-only).
+  (see umtri://rules/seasons).
 - The brief is still an information-structure diagram, not a work log
   (see umtri://rules/vocabulary) — realize the structure the human intends,
   and name nodes as what they are.

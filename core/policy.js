@@ -231,6 +231,93 @@ export function reparentMetadataHint(patch) {
   };
 }
 
+// ── wiki 본문 ────────────────────────────────────────────────────────
+// 위키를 로그로 쓰는 경향이 실제로 관찰됐다 — 작업을 끝낸 에이전트가 페이지를 열어
+// "이번에 뭘 했는지"를 덧붙이고, 몇 번 반복되면 페이지가 세션 요약 더미가 된다.
+// 규칙 문서(umtri://rules/wiki)에 적어뒀지만 리소스는 pull-only라 안 읽으면 그만이라,
+// 쓰는 순간에 신호를 준다.
+//
+// **거부하지 않고 경고만 한다.** 판정이 휴리스틱이고, 날짜가 정당하게 필요한 문서도
+// 있기 때문이다(마이그레이션 위험 고지 등). 오탐이 잦으면 경고 자체가 무시되므로
+// 정밀도가 높은 신호만 고른다 — 셋 다 산문형 레퍼런스에는 거의 나오지 않는 형태다.
+// 날짜가 제목 **앞머리**에 올 때만 잡는다. "## 2026-08-27 — 인증 분리"는 일지 항목이지만
+// "## 확정된 결정 (2026-07-28)"은 결정에 날짜를 단 것이라 정당하다. 괄호 안 날짜까지
+// 잡으면 오탐이 늘고, 오탐이 늘면 경고를 아무도 안 본다.
+const WIKI_DATE_HEADING_RE = /^#{1,6}\s*[([]?\s*20\d{2}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*\d{1,2}/m;
+const WIKI_CHANGELOG_HEADING_RE = /^#{1,6}\s*(?:.*(?:change\s*(?:log|history)|revision history|release notes|변경\s*(?:이력|내역)|작업\s*이력|업데이트\s*내역|진행\s*(?:표시|상황)).*)$/im;
+const WIKI_CHECKBOX_RE = /^\s*[-*+]\s*\[[ xX]\]/gm;
+
+export function wikiLogShapeCheck(body) {
+  if (!body || typeof body !== 'string') return [];
+  const out = [];
+
+  if (WIKI_DATE_HEADING_RE.test(body)) {
+    out.push({
+      rule: 'wiki-dated-entry',
+      severity: 'warn',
+      message: 'This body has a date heading. A wiki page is a description of how something works now, not a dated log — the page\'s own past is kept in its revisions (list_wiki_revisions) and who-changed-what in list_events. Fold the fact into the prose and drop the date, unless the date is itself a live hazard a reader must know.',
+    });
+  }
+
+  if (WIKI_CHANGELOG_HEADING_RE.test(body)) {
+    out.push({
+      rule: 'wiki-changelog-section',
+      severity: 'warn',
+      message: 'This body has a change-history / progress section. Revisions already record what the page said before, so that section duplicates them and goes stale. Delete it and let the prose describe the current state.',
+    });
+  }
+
+  const boxes = body.match(WIKI_CHECKBOX_RE);
+  if (boxes && boxes.length >= 3) {
+    out.push({
+      rule: 'wiki-progress-checklist',
+      severity: 'info',
+      message: `This body has ${boxes.length} checklist items. Outstanding work belongs in bugs (create_bug) or plan nodes, where it can be tracked and closed — a checklist in a wiki page is read by nobody and rots. Keep the page to what is true now.`,
+    });
+  }
+
+  return out;
+}
+
+// ── 도구 호출 마크업 유출 ────────────────────────────────────────────
+// 인자가 필드로 쪼개지지 못하고 첫 필드에 통째로 들어오는 사고가 실제로 있었다
+// (feedback #1: create_bug을 세 번 부르는 동안 세 번 다 solution이 description 꼬리에
+// 문자열로 붙고 solution은 null로 저장됐다). 긴 산문 필드 둘이 나란히 오면 특히 잦다.
+//
+// 저장 자체는 성공하므로 아무도 모른 채 지나가고, 사람이 앱에서 볼 때에야 드러난다.
+// 그래서 쓰기 응답에 그 자리에서 신호를 준다.
+//
+// **거부하지 않고 경고만 한다.** 도구 포맷을 *설명하는* 산문이 이 조각들을 정상적으로
+// 담기 때문이다 — 하필 이 프로젝트의 위키가 그런 글을 쓴다. 대신 코드펜스와 인라인
+// 코드를 걷어내고 검사한다: 설명하는 글은 따옴표 안에 넣고, 진짜 유출은 맨몸으로 온다.
+// 이 구분이 오탐을 거의 없앤다.
+const TOOL_MARKUP_RES = [
+  /<\/?(?:antml:)?parameter\b/i,
+  /<\/?(?:antml:)?invoke\b/i,
+  /<\/?(?:antml:)?function_calls\b/i,
+  /<\/(?:description|solution|body|title|label|note|metadata)>/i,
+];
+
+function withoutCode(text) {
+  return text.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]*`/g, ' ');
+}
+
+// fields: { 필드이름: 값 } — 문자열이 아닌 값은 건너뛴다.
+export function toolMarkupCheck(fields) {
+  const out = [];
+  for (const [name, value] of Object.entries(fields || {})) {
+    if (!value || typeof value !== 'string') continue;
+    const bare = withoutCode(value);
+    if (!TOOL_MARKUP_RES.some((re) => re.test(bare))) continue;
+    out.push({
+      rule: 'tool-markup-leaked',
+      severity: 'warn',
+      message: `The "${name}" value contains raw tool-call markup (e.g. "</${name}>" or "<parameter name=...>"). That means this call's arguments were not split into fields: the text meant for the next parameter was appended to this one, and that parameter was almost certainly saved empty. Read the record back and re-send the values as separate arguments — nothing else will report this. (Writing *about* tool-call syntax is fine: put it in a code fence or inline code, which this check ignores.)`,
+    });
+  }
+  return out;
+}
+
 // ── bug lifecycle ────────────────────────────────────────────────────
 // Bug Codex reads status as three states: open=wild, in_progress=chasing,
 // resolved|closed=catched. The recommended path is wild → chasing → catched:

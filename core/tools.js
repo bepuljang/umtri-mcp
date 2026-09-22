@@ -5,7 +5,7 @@
 //   - api: createApiClient(...) 결과 — get/post/put/patch/delete
 
 import { z } from 'zod';
-import { validateNode, validateEdge, validateUpdate, validateBugUpdate } from './policy.js';
+import { validateNode, validateEdge, validateUpdate, validateBugUpdate, wikiLogShapeCheck, toolMarkupCheck } from './policy.js';
 
 // LLM이 소비하는 결과 — 들여쓰기는 순수 토큰 낭비라 minify. (큰 그래프에서 ~19% 절감)
 function jsonResult(data) {
@@ -153,7 +153,7 @@ function compressGraph(graph, { descMode = 'excerpt' } = {}) {
 }
 
 // list_projects summary — 슬라이드 식별·탐색에 필요한 핵심만. icon base64(metadata)·
-// preNotes·seedMeta·typeCounts 등 무거운 필드는 생략. description은 descMode로 제어.
+// seedMeta·typeCounts 등 무거운 필드는 생략. description은 descMode로 제어.
 function compressProjects(projects, { descMode = 'excerpt' } = {}) {
   if (!Array.isArray(projects)) return projects;
   return projects.map((p) => {
@@ -166,6 +166,8 @@ function compressProjects(projects, { descMode = 'excerpt' } = {}) {
       openBugs: p.openBugs,
       seasonCount: p.seasonCount,
     };
+    // 문서가 있다는 사실만 흘린다. 0이면 생략 — 대부분의 ground가 0이라 매번 실으면 잡음이다.
+    if (p.wikiCount) out.wikiCount = p.wikiCount;
     if (p.nowSeasonLabel) out.nowSeasonLabel = p.nowSeasonLabel;
     if (p.latestActivityAt) out.latestActivityAt = p.latestActivityAt;
     const d = pickDesc(p.description, descMode);
@@ -187,6 +189,8 @@ function compressBugs(bugs, { descMode = 'excerpt' } = {}) {
       status: b.status,
     };
     if (b.impactCount != null) out.impactCount = b.impactCount;
+    // 체크리스트 진행도 — "남은 일이 몇 개냐"에 본문을 열 필요가 없게. 항목이 없으면 생략.
+    if (b.solutionProgress) out.solutionProgress = `${b.solutionProgress.done}/${b.solutionProgress.total}`;
     if (b.createdAt) out.createdAt = b.createdAt;
     if (b.resolvedAt) out.resolvedAt = b.resolvedAt;
     const d = pickDesc(b.description, descMode);
@@ -314,7 +318,7 @@ export function registerTools(server, { api }) {
     'list_projects',
     {
       title: 'List grounds (projects)',
-      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. Pass view="full" for all fields (preNotes, seedMeta, typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
+      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. A ground with wiki pages also carries wikiCount — prose the tree cannot hold (conventions, decisions, glossary); read it with list_wiki. Pass view="full" for all fields (seedMeta — the ground\'s human-written intent: goal, endDate, budget, audience — plus typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
       inputSchema: z.object({
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for a compact list; full for every field.'),
       }),
@@ -334,7 +338,7 @@ export function registerTools(server, { api }) {
     'get_graph',
     {
       title: 'Get the graph of a ground',
-      description: 'Returns the tree(nodes), edges, apis, seasons, and bugs for one ground. The tree is the project\'s information-structure (IA) diagram — each node is a structural element (an object, or an action it performs), not a work-log entry. Node types follow the plant metaphor: trunk → limb → twig → leaf → vein. See resource umtri://rules/vocabulary. By default returns a summary view — nodes carry id/label/type/parent/season, plus a 200-char description excerpt, metadata.implements, placeholder/dormant flags (soft-deleted nodes are omitted). Pass view="full" only when you need timestamps, full descriptions, all metadata keys, or tags — that response is ~3× larger. For a large tree, read it in slices instead of all at once: rootId (+depth) for one trunk or limb; maxType for a layer (e.g. maxType="twig" = the skeleton without leaves/veins — a cheap overview); role for a cross-section; season for what was born in one season. Filters combine. Node ids come from the graph itself, so the standard drill-down is two calls: first get_graph with maxType="trunk" (or "limb") for a cheap skeleton, find the id you want, then call again with rootId set to it to get just that trunk/limb and its subtree. Control the heaviest field with descriptions: "none" drops descriptions for a pure structural overview, "excerpt" (default) gives a 200-char preview, "full" returns them verbatim when you drill into a limb. The summary response also carries shape (nodeCount, maxDepth, nodes-per-level, over-wide branches) so you can judge whether the tree is too deep or too wide without rebuilding it, a childCount on each branch node, and iaHints flagging structural smells. A bushy tree (mass at mid-levels) is healthy — don\'t over-nest sparse parents into twigs. Bugs default to active (open + in_progress) — pass bugStatus="all" to also see healed (resolved/closed) ones. Nodes may carry plan:true — these are the human\'s node-based brief (intent drawn as structure, not a prompt); read them as instructions and realize them (see umtri://rules/plan). When you slice (rootId/maxType/role/season), a connection with only ONE endpoint inside the slice is still returned, marked boundary:true, and its outside endpoint appears as a lightweight stub in externalNodes (id/label/type/role, external:true) — so cross-branch dependencies and calls never silently vanish from a slice. To follow one, call get_graph again with rootId set to that external id. The response also carries project.transplanting — when true the ground is still being transplanted (see umtri://rules/transplant): you may freely add/edit nodes in any season incl. past, and hard-delete import mistakes.',
+      description: 'Returns the tree(nodes), edges, apis, seasons, and bugs for one ground. The tree is the project\'s information-structure (IA) diagram — each node is a structural element (an object, or an action it performs), not a work-log entry. Node types follow the plant metaphor: trunk → limb → twig → leaf → vein. See resource umtri://rules/vocabulary. By default returns a summary view — nodes carry id/label/type/parent/season, plus a 200-char description excerpt, metadata.implements, placeholder/dormant flags (soft-deleted nodes are omitted). Pass view="full" only when you need timestamps, full descriptions, all metadata keys, or tags — that response is ~3× larger. For a large tree, read it in slices instead of all at once: rootId (+depth) for one trunk or limb; maxType for a layer (e.g. maxType="twig" = the skeleton without leaves/veins — a cheap overview); role for a cross-section; season for what was born in one season. Filters combine. Node ids come from the graph itself, so the standard drill-down is two calls: first get_graph with maxType="trunk" (or "limb") for a cheap skeleton, find the id you want, then call again with rootId set to it to get just that trunk/limb and its subtree. Control the heaviest field with descriptions: "none" drops descriptions for a pure structural overview, "excerpt" (default) gives a 200-char preview, "full" returns them verbatim when you drill into a limb. The summary response also carries shape (nodeCount, maxDepth, nodes-per-level, over-wide branches) so you can judge whether the tree is too deep or too wide without rebuilding it, a childCount on each branch node, and iaHints flagging structural smells. A bushy tree (mass at mid-levels) is healthy — don\'t over-nest sparse parents into twigs. Bugs default to active (open + in_progress) — pass bugStatus="all" to also see healed (resolved/closed) ones. Nodes may carry plan:true — these are the human\'s node-based brief (intent drawn as structure, not a prompt); read them as instructions and realize them (see umtri://rules/plan). When you slice (rootId/maxType/role/season), a connection with only ONE endpoint inside the slice is still returned, marked boundary:true, and its outside endpoint appears as a lightweight stub in externalNodes (id/label/type/role, external:true) — so cross-branch dependencies and calls never silently vanish from a slice. To follow one, call get_graph again with rootId set to that external id. The response also carries project.transplanting — when true the ground is still being transplanted (see umtri://rules/transplant): you may freely add/edit nodes in any season incl. past, and hard-delete import mistakes. project.seedMeta is the ground\'s intent when the human filled it in — goal, endDate, budget, audience. No tool writes it, so it is the human\'s own brief for what this tree is for: read it before you propose or reshape structure, and let it settle what belongs in the tree and what does not.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug (from list_projects).'),
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for compact nodes; full for raw shape with all fields.'),
@@ -404,7 +408,7 @@ export function registerTools(server, { api }) {
     'list_bugs',
     {
       title: 'List bugs of a ground',
-      description: 'Scans the bugs (issues eroding the ground) of one ground. Looking at ONE bug you already know the number/id of? Call get_bug instead — no need to list. Bugs default to status="active" (wild + chasing): a healed bug is history, and history is not what a scan is for. Ask for "catched" or "all" when you actually want it. Status speaks the product\'s own words — wild (found, nobody on it) → chasing (someone is fixing it) → catched (it landed) — the same words the UI shows. Each bug has a score (0–8 change-risk; 8 = riskiest). Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, seq (the number a human says, "#14"), target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata. Use limit + order to bound a scan (e.g. the 5 newest) instead of pulling every bug.',
+      description: 'Scans the bugs (issues eroding the ground) of one ground. Looking at ONE bug you already know the number/id of? Call get_bug instead — no need to list. Bugs default to status="active" (wild + chasing): a healed bug is history, and history is not what a scan is for. Ask for "catched" or "all" when you actually want it. Status speaks the product\'s own words — wild (found, nobody on it) → chasing (someone is fixing it) → catched (it landed) — the same words the UI shows. Each bug has a score (0–8 change-risk; 8 = riskiest), and any bug whose solution carries a checklist also carries solutionProgress ("2/5" — ticked/total), so you can see what is left without opening a single body. Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, seq (the number a human says, "#14"), target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata. Use limit + order to bound a scan (e.g. the 5 newest) instead of pulling every bug.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         status: z.enum(['active', 'wild', 'chasing', 'catched', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional()
@@ -449,12 +453,19 @@ export function registerTools(server, { api }) {
         slug: z.string().min(1).describe('Ground slug.'),
         ref: z.union([z.string().min(1), z.coerce.number().int().positive()])
           .describe('Bug number (seq, e.g. 14) or internal id (bug-<uuid>).'),
+        descriptions: z.enum(['none', 'excerpt', 'full']).optional()
+          .describe('How much of description to return. Default "full". Use "none"/"excerpt" when you only came for the solution checklist.'),
+        solution: z.enum(['none', 'open', 'full']).optional()
+          .describe('How much of solution to return. Default "full". "open" returns only the unchecked items and drops the prose — the cheap answer to "what is left?".'),
       }),
     },
-    async ({ slug, ref }) => {
+    async ({ slug, ref, descriptions, solution }) => {
       try {
+        const qs = ['impact=true'];
+        if (descriptions) qs.push(`descriptions=${descriptions}`);
+        if (solution) qs.push(`solution=${solution}`);
         const bug = await api.get(
-          `/api/projects/${encodeURIComponent(slug)}/bugs/${encodeURIComponent(String(ref))}?impact=true`,
+          `/api/projects/${encodeURIComponent(slug)}/bugs/${encodeURIComponent(String(ref))}?${qs.join('&')}`,
         );
         return jsonResult(bug);
       } catch (e) { return errorResult(e); }
@@ -465,7 +476,7 @@ export function registerTools(server, { api }) {
     'list_seasons',
     {
       title: 'List seasons of a ground',
-      description: 'Returns the seasons (time epochs) of a ground in chronological order. Seasons are created only by humans — do not attempt to create them via this MCP. See umtri://rules/seasons-human-only. By default returns a summary view (id, label, state, startedAt, grownAt). Pass view="full" to also include metadata.',
+      description: 'Returns the seasons (time epochs) of a ground in chronological order. A season is the human\'s declaration that a chapter closed. You may create one with create_season, but only after the user confirms it — see umtri://rules/seasons. By default returns a summary view (id, label, state, startedAt, grownAt). Pass view="full" to also include metadata.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         view: z.enum(['summary', 'full']).optional().describe('summary (default) drops UI-only metadata; full includes it.'),
@@ -518,7 +529,7 @@ export function registerTools(server, { api }) {
         'target.kind = "ground" attaches the bug to the project itself (no id).',
         RISK_RUBRIC,
         'status defaults to "open".',
-        'solution is the fix: at report time it is the plan ("this is probably how we fix it"), and by the time the bug is resolved it should describe what was actually applied. Same field — overwrite it as understanding changes; project_events keeps the diff. Leave it empty rather than guessing.',
+        'solution is the fix, and it belongs to agents — the app gives people no way to edit it, so a human\'s own proposed fix arrives in description instead. At report time solution holds the plan, and by the time the bug is resolved it should describe what was actually applied. Same field — overwrite it as understanding changes; project_events keeps the diff. Write what remains as "- [ ] item" lines so the app can render them as cards and later moves cost one small op (update_bug patch:{solutionItem}). Leave it empty rather than guessing.',
         'For a node/api bug, the response auto-attaches impact (the affected blast radius from the target): reachedCount, the reached nodes with hop distance and the connection each was reached through, other active bugs sitting in that radius, and a coverage note. Use it to scope what else to check/QA. If the target has no recorded connections the radius is empty — that means nothing is recorded, not that nothing is affected (record edges/apis).',
         'Requires a write-scope token. See umtri://rules/vocabulary for bug semantics.',
       ].join(' '),
@@ -538,6 +549,8 @@ export function registerTools(server, { api }) {
     },
     async ({ slug, title, target, description, solution, score, status }) => {
       try {
+        // 인자가 필드로 쪼개지지 못한 흔적 — 저장은 되지만 다음 필드가 비어 있다.
+        const markupWarnings = toolMarkupCheck({ description, solution });
         const body = { title, target };
         if (description !== undefined) body.description = description;
         if (solution !== undefined) body.solution = solution;
@@ -557,7 +570,7 @@ export function registerTools(server, { api }) {
             };
           } catch { /* 영향권 부가 정보 실패는 무시 */ }
         }
-        return jsonResult(created);
+        return jsonResult(markupWarnings.length ? { ...created, warnings: markupWarnings } : created);
       } catch (e) { return errorResult(e); }
     },
   );
@@ -576,10 +589,48 @@ export function registerTools(server, { api }) {
     },
     async ({ slug, name, description, visibility }) => {
       try {
+        const markupWarnings = toolMarkupCheck({ description });
         const body = { slug, name };
         if (description !== undefined) body.description = description;
         if (visibility !== undefined) body.visibility = visibility;
-        return jsonResult(await api.post('/api/projects', body));
+        const created = await api.post('/api/projects', body);
+        return jsonResult(markupWarnings.length ? { ...created, warnings: markupWarnings } : created);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // 시즌은 사람의 선언이지만, 옮겨심기처럼 사람이 에이전트에게 맡기고 싶은 자리도 있다.
+  // 그래서 도구는 열되 확인 게이트를 둔다 — 첫 호출은 만들지 않고 "무엇이 봉인되는지"를 돌려주고,
+  // 사람이 답한 뒤 confirm:true로 다시 부를 때만 만든다. 설명만으로는 강제되지 않아 입력으로 받는다.
+  server.registerTool(
+    'create_season',
+    {
+      title: 'Create a new season',
+      description: 'Creates a new season and makes it the "now" season. This is not an additive act: the ground\'s current now-season is sealed as past and every node in it is marked grown, which locks that node\'s parent/season/type/sproutedAt. CONFIRMATION GATE: call once WITHOUT confirm to get back what would be sealed, put that to the user in your own words, and call again with confirm:true only after they say yes. Never pass confirm:true on your own judgment — a season is the human\'s declaration that one chapter closed and the next began, and inventing one makes the ground\'s timeline meaningless. Unsure which season a node belongs to? Attach it to the existing now-season instead of opening a new one. See umtri://rules/seasons.',
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        label: z.string().min(1).describe('Season label the human chose — a version, phase, or period (e.g. "1.0.0", "PoC", "Q3 2026").'),
+        confirm: z.boolean().optional().describe('Pass true ONLY after the user has agreed to this exact season. Omit it on the first call to receive the confirmation payload instead.'),
+      }),
+    },
+    async ({ slug, label, confirm }) => {
+      try {
+        if (confirm !== true) {
+          const seasons = await api.get(`/api/projects/${encodeURIComponent(slug)}/seasons`);
+          const now = Array.isArray(seasons) ? seasons.find((x) => x.state === 'now') : null;
+          return jsonResult({
+            status: 'confirmation_required',
+            created: false,
+            wouldCreate: label,
+            wouldSeal: now ? { id: now.id, label: now.label } : null,
+            effect: now
+              ? `Season "${now.label}" would be sealed as past and its nodes locked (parent/season/type/sproutedAt).`
+              : 'This ground has no season yet, so nothing would be sealed.',
+            next: 'Ask the user to confirm this season, then call create_season again with confirm: true.',
+          });
+        }
+        const res = await api.post(`/api/projects/${encodeURIComponent(slug)}/seasons`, { label });
+        return jsonResult(res);
       } catch (e) { return errorResult(e); }
     },
   );
@@ -597,7 +648,7 @@ export function registerTools(server, { api }) {
         'season ∈ existing season id; omit to use the active "now" season. Past seasons are normally rejected, but allowed while the ground is transplanting (project.transplanting=true) — nodes added then are auto-stamped metadata.transplanted=true for audit. See umtri://rules/transplant.',
         'The tool validates against protocol policies. Hierarchy violations are rejected. Soft issues (reserved-domain labels, leaf↔vein heuristic, trunk naming) come back as warnings in the response — reconsider before continuing if warnings appear.',
         'After creating a leaf/vein, consider its connections: if it calls/feeds another node add an api (create_api), if it depends on/is built on another add an edge (create_edge). The response carries a connectionCheck reminder. See umtri://rules/system-structure (Connections).',
-        'Creating seasons via MCP is forbidden — see umtri://rules/seasons-human-only.',
+        'Do not open a new season just because none fits — attach to the now-season, or ask the user. create_season needs their confirmation (umtri://rules/seasons).',
         'When realizing a human-drawn plan brief, any detail nodes you add should carry metadata.plan=true and the realized node needs metadata.implements — see umtri://rules/plan.',
       ].join(' '),
       inputSchema: z.object({
@@ -640,7 +691,8 @@ export function registerTools(server, { api }) {
         if (sproutedAt !== undefined) body.sproutedAt = sproutedAt;
 
         const created = await api.post(`/api/projects/${encodeURIComponent(slug)}/nodes`, body);
-        const out = warnings.length ? { ...created, warnings } : { ...created };
+        const allWarnings = warnings.concat(toolMarkupCheck({ description }));
+        const out = allWarnings.length ? { ...created, warnings: allWarnings } : { ...created };
         // 연결 고민 넛지 — leaf/vein은 보통 다른 노드를 호출/의존하므로 매번 확인 유도.
         if (type === 'leaf' || type === 'vein') {
           out.connectionCheck = 'Does this node call/feed another (→ create_api) or depend on another (→ create_edge)? Add the connection now if so; skip if genuinely standalone. See umtri://rules/system-structure (Connections).';
@@ -676,6 +728,7 @@ export function registerTools(server, { api }) {
 
         const patchResult = validateUpdate({ patch });
         warnings = warnings.concat(patchResult.warnings);
+        warnings = warnings.concat(toolMarkupCheck({ description: patch.description }));
 
         if (patch.type !== undefined || patch.parent !== undefined || patch.label !== undefined) {
           const graph = await api.get(`/api/projects/${encodeURIComponent(slug)}/graph`);
@@ -741,23 +794,6 @@ export function registerTools(server, { api }) {
         const useHard = hard === true && transplanting;
         const path = `/api/projects/${encodeURIComponent(slug)}/nodes/${encodeURIComponent(id)}${useHard ? '?hard=true' : ''}`;
         const res = await api.delete(path);
-        return jsonResult(res);
-      } catch (e) { return errorResult(e); }
-    },
-  );
-
-  server.registerTool(
-    'reopen_transplant',
-    {
-      title: 'Re-open transplant on a ground',
-      description: 'Re-opens the transplant window on a rooted ground (sets project.transplanting=true), relaxing guards so historical/structural reconstruction can resume: add/edit nodes in any season incl. past, and hard-delete mistakes. CRITICAL: only call this when the user has EXPLICITLY asked to switch the ground into transplanting (e.g. "put this ground back in transplant", "옮겨심기로 바꿔줘"). Never decide to re-open transplant on your own judgment — it removes safety guardrails. Rooting it back (settling) is human-only via the UI. See umtri://rules/transplant.',
-      inputSchema: z.object({
-        slug: z.string().min(1).describe('Ground slug.'),
-      }),
-    },
-    async ({ slug }) => {
-      try {
-        const res = await api.post(`/api/projects/${encodeURIComponent(slug)}/root`, { rooted: false });
         return jsonResult(res);
       } catch (e) { return errorResult(e); }
     },
@@ -866,12 +902,14 @@ export function registerTools(server, { api }) {
         const { ok, rejectReason } = validateEdge({ sourceId: start, targetId: end });
         if (!ok) throw new Error(`Rejected by protocol: ${rejectReason}`);
 
+        const markupWarnings = toolMarkupCheck({ label, description });
         const body = { start, end };
         if (label !== undefined) body.label = label;
         if (description !== undefined) body.description = description;
         if (metadata !== undefined) body.metadata = metadata;
 
-        return jsonResult(await api.post(`/api/projects/${encodeURIComponent(slug)}/apis`, body));
+        const created = await api.post(`/api/projects/${encodeURIComponent(slug)}/apis`, body);
+        return jsonResult(markupWarnings.length ? { ...created, warnings: markupWarnings } : created);
       } catch (e) { return errorResult(e); }
     },
   );
@@ -898,7 +936,9 @@ export function registerTools(server, { api }) {
         if (patch.start && patch.end && patch.start === patch.end) {
           throw new Error('Rejected by protocol: API start and end cannot be the same node.');
         }
-        return jsonResult(await api.patch(`/api/projects/${encodeURIComponent(slug)}/apis/${encodeURIComponent(id)}`, patch));
+        const markupWarnings = toolMarkupCheck({ label: patch.label, description: patch.description });
+        const updated = await api.patch(`/api/projects/${encodeURIComponent(slug)}/apis/${encodeURIComponent(id)}`, patch);
+        return jsonResult(markupWarnings.length ? { ...updated, warnings: markupWarnings } : updated);
       } catch (e) { return errorResult(e); }
     },
   );
@@ -926,10 +966,13 @@ export function registerTools(server, { api }) {
       title: 'Update a bug',
       description: [
         'Partial update of a bug. Most common use: status transition.',
+        'Send only the fields that actually change. A status transition is patch:{status} alone — do not re-send an unchanged solution, description, or metadata. Those fields carry prose, and re-emitting them costs far more time than the update itself and risks a malformed-argument retry.',
         'Follow the lifecycle one step at a time: open (wild) → in_progress (chasing) → resolved (catched).',
         'Set status="in_progress" the moment you start the fix, not after it lands — it is the only marker that someone is already on this bug, so a parallel agent can see the work in flight instead of duplicating it. Then set "resolved" once it ships.',
         'Skipping straight from open to resolved returns a warning (not a rejection) — acceptable when the fix was genuinely instant.',
         'Other patchable fields: title, description, solution, score (0–8 change-risk), metadata.',
+        'solution is yours to maintain — the app does not let people edit it, so what you write is what the human reads. Their own proposed fix arrives in description instead.',
+        'Keep solution as a checklist: prose for what you learned, "- [ ] item" lines for what remains. To move one item use patch:{solutionItem:{…}} instead of re-sending the whole field — add: "text", or check/uncheck/remove: <1-based item number>. Pass expect:"<start of that item text>" alongside a number so a shifted list fails loudly instead of ticking the wrong line. This is the cheap path: one short op, not a re-emitted body.',
         'When resolving, rewrite solution to what you actually applied — at report time it held the plan, and leaving a stale plan there is worse than leaving it empty.',
         'To mark a bug as fixed, prefer status="resolved" over delete — that preserves the history of what eroded the tree.',
         'When resolving, you may record the shipped release in metadata.resolvedVersion (e.g. "v2.3.1"); metadata is replaced wholesale, so include existing keys you want to keep.',
@@ -942,7 +985,14 @@ export function registerTools(server, { api }) {
           score: z.coerce.number().int().min(0).max(8).optional().describe('Change risk 0–8 (8 = riskiest). See create_bug for the rubric.'),
           title: z.string().min(1).max(200).optional(),
           description: z.string().nullable().optional().describe('What is wrong.'),
-          solution: z.string().nullable().optional().describe('How it is being / was fixed. Rewrite this to the actually-applied fix when you set status="resolved" — a stale plan left behind is worse than an empty field. null clears it.'),
+          solution: z.string().nullable().optional().describe('How it is being / was fixed — prose plus "- [ ] item" lines. Rewrite it to the actually-applied fix when you set status="resolved"; a stale plan left behind is worse than an empty field. null clears it. Replaces the whole field — to move a single item use solutionItem.'),
+          solutionItem: z.object({
+            add: z.string().min(1).optional().describe('Append a new unchecked item.'),
+            check: z.coerce.number().int().positive().optional().describe('Tick item #N (1-based, counting items only).'),
+            uncheck: z.coerce.number().int().positive().optional().describe('Untick item #N.'),
+            remove: z.coerce.number().int().positive().optional().describe('Delete item #N.'),
+            expect: z.string().optional().describe('Guard for check/uncheck/remove: the start of that item\'s text. Mismatch is rejected, so a reordered list cannot silently tick the wrong line.'),
+          }).optional().describe('Move ONE checklist item without re-sending solution. Cannot be combined with solution.'),
           metadata: z.record(z.any()).optional(),
         }),
       }),
@@ -960,7 +1010,12 @@ export function registerTools(server, { api }) {
         }
         const updated = await api.patch(`/api/projects/${encodeURIComponent(slug)}/bugs/${encodeURIComponent(id)}`, patch);
         const { warnings } = validateBugUpdate({ currentStatus, patch });
-        return jsonResult(warnings.length ? { ...updated, warnings } : updated);
+        const allWarnings = warnings.concat(toolMarkupCheck({
+          description: patch?.description,
+          solution: patch?.solution,
+          solutionItem: patch?.solutionItem?.add,
+        }));
+        return jsonResult(allWarnings.length ? { ...updated, warnings: allWarnings } : updated);
       } catch (e) { return errorResult(e); }
     },
   );
@@ -978,6 +1033,255 @@ export function registerTools(server, { api }) {
     async ({ slug, id }) => {
       try {
         return jsonResult(await api.delete(`/api/projects/${encodeURIComponent(slug)}/bugs/${encodeURIComponent(id)}`));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Feedback — Umtri 제품 자체에 대한 건의 ────────────────────────────
+  // create_bug과 헷갈리면 남의 프로젝트 기록이 오염된다. 그래서 세 도구 설명 모두
+  // 첫 문장에서 "about Umtri itself, not about your project"를 못박는다.
+  // 사람이 시켰을 때만 부르라는 조건도 여기 둔다 — 에이전트가 자율 발송하면
+  // 자기가 잘 못 쓴 도구를 전부 개선요구로 쏟아내 접수함이 먼저 죽는다.
+  //
+  // 단방향 채널이다: send_feedback만 누구나 쓰고, list/update는 Umtri 운영 계정
+  // 전용(서버가 403). 도구 설명에 그걸 적어 두는 게 비용이 싸다 — 안 적으면
+  // 일반 사용자의 에이전트가 403을 받고 재시도하며 헤맨다.
+
+  server.registerTool(
+    'send_feedback',
+    {
+      title: 'Send feedback about Umtri itself',
+      description: [
+        'Files a suggestion or a defect report about **Umtri the product** — this MCP server, its tools, the app, the docs.',
+        'This is NOT for issues in the user\'s own project: those are bugs on a ground (create_bug).',
+        'Call this ONLY when the human explicitly asks to leave feedback ("건의해줘", "report this to Umtri"). Do not file feedback on your own initiative — an inbox filled by agents stops being read.',
+        'kind: "bug" = something in Umtri is broken or wrong; "improvement" = a suggestion / wish (default).',
+        'source: where it surfaced — the ground slug you were working in, the tool name that felt wrong, the screen. It is free text and is not validated, but it is what makes a report actionable later.',
+        'One-way: this files the report, and there is no reading it back — do not promise the human a status thread. Requires a write-scope token.',
+      ].join(' '),
+      inputSchema: z.object({
+        kind: z.enum(['bug', 'improvement']).optional()
+          .describe('"bug" for something broken in Umtri, "improvement" for a suggestion. Defaults to "improvement".'),
+        title: z.string().min(1).max(200).describe('One-line summary. Required.'),
+        body: z.string().optional().describe('Details — what you expected, what happened, why it matters (markdown allowed).'),
+        source: z.string().max(200).optional().describe('Where it came up: ground slug, tool name, or screen.'),
+      }),
+    },
+    async ({ kind, title, body, source }) => {
+      try {
+        const markupWarnings = toolMarkupCheck({ title, body });
+        const payload = { title };
+        if (kind !== undefined) payload.kind = kind;
+        if (body !== undefined) payload.body = body;
+        if (source !== undefined) payload.source = source;
+        const filed = await api.post('/api/feedback', payload);
+        return jsonResult(markupWarnings.length ? { ...filed, warnings: markupWarnings } : filed);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'list_feedback',
+    {
+      title: 'List feedback filed about Umtri',
+      description: 'Lists feedback filed about **Umtri the product** (see send_feedback) — not the bugs of any ground. Umtri operators only: every other account gets 403, so do not call this to check on feedback you filed. Newest first. Status: open (untouched) → done (handled) / wontfix (declined, with the reason in note). Defaults to every status; pass status to narrow. Use limit to bound a scan.',
+      inputSchema: z.object({
+        status: z.enum(['open', 'done', 'wontfix']).optional().describe('Filter by status. Omit for all.'),
+        kind: z.enum(['bug', 'improvement']).optional().describe('Filter by kind. Omit for both.'),
+        limit: z.coerce.number().int().positive().optional().describe('Return at most this many.'),
+        order: z.enum(['asc', 'desc']).optional().describe('By creation time. Default "desc" (newest first).'),
+      }),
+    },
+    async ({ status, kind, limit, order }) => {
+      try {
+        const qs = [];
+        if (status) qs.push(`status=${encodeURIComponent(status)}`);
+        if (kind) qs.push(`kind=${encodeURIComponent(kind)}`);
+        if (limit) qs.push(`limit=${limit}`);
+        if (order) qs.push(`order=${encodeURIComponent(order)}`);
+        return jsonResult(await api.get(`/api/feedback${qs.length ? `?${qs.join('&')}` : ''}`));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'update_feedback',
+    {
+      title: 'Update filed feedback',
+      description: 'Updates one feedback record about **Umtri the product** — typically closing it: status="done" once it shipped, or "wontfix" when it was declined. Put what was actually done (or why not) in note; that is the part worth reading a year later. Umtri operators only: every other account gets 403. Send only the fields that change. Requires a write-scope token.',
+      inputSchema: z.object({
+        id: z.coerce.number().int().positive().describe('Feedback number, as returned by send_feedback / list_feedback.'),
+        status: z.enum(['open', 'done', 'wontfix']).optional().describe('open → done (handled) / wontfix (declined).'),
+        note: z.string().optional().describe('What was done about it, or why it was declined.'),
+        kind: z.enum(['bug', 'improvement']).optional(),
+        title: z.string().min(1).max(200).optional(),
+        body: z.string().optional(),
+        source: z.string().max(200).optional(),
+      }),
+    },
+    async ({ id, ...fields }) => {
+      try {
+        const patch = {};
+        for (const [k, v] of Object.entries(fields)) if (v !== undefined) patch[k] = v;
+        if (Object.keys(patch).length === 0) {
+          return errorResult(new Error('Nothing to update — pass at least one field.'));
+        }
+        const markupWarnings = toolMarkupCheck({ title: patch.title, body: patch.body, note: patch.note });
+        const updated = await api.patch(`/api/feedback/${id}`, patch);
+        return jsonResult(markupWarnings.length ? { ...updated, warnings: markupWarnings } : updated);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Wiki — ground별 지식 저장소 ───────────────────────────────────────
+  // 트리는 구조를 담지 "합의·용어·결정·조사 결과"를 담지 않는다. 그게 갈 곳이 없어
+  // 지금까지 ground description과 대상 없는 버그로 샜다. 문서는 노드에 붙을 수 있되
+  // 독립적으로도 산다 — 붙일 노드가 없다고 못 적게 하면 정작 필요한 초기에 못 쓴다.
+  // 아직 사람용 편집 화면이 없다: 지금은 이 도구들이 유일한 쓰기 경로다.
+
+  server.registerTool(
+    'list_wiki',
+    {
+      title: 'List wiki pages of a ground',
+      description: 'Lists the ground\'s wiki — the prose the tree cannot hold: conventions, decisions and why they were made, glossary, onboarding. Reference entries describing how things work, not a log of what happened: the change record is list_events, the page\'s own past is in its revisions. Not the structure itself (get_graph) and not defects (list_bugs). Bodies come back as 200-char excerpts by default so a scan stays cheap; pass body="full" only when you mean to read them, or body="none" for a pure index. A page may hang off a node (nodeId) or float free — pass node=<id> for one node\'s pages, or node="none" for the pages not yet attached to anything, which is the list worth reviewing when the tree has grown.',
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        node: z.string().optional().describe('Node id to filter by, or "none" for pages attached to nothing yet. Omit for all.'),
+        body: z.enum(['none', 'excerpt', 'full']).optional().describe('How much body text per page. Default "excerpt" (200 chars).'),
+        limit: z.coerce.number().int().positive().optional(),
+        order: z.enum(['asc', 'desc']).optional().describe('By last update. Default "desc" (most recently touched first).'),
+      }),
+    },
+    async ({ slug, node, body, limit, order }) => {
+      try {
+        const qs = [];
+        if (node) qs.push(`node=${encodeURIComponent(node)}`);
+        if (body) qs.push(`body=${body}`);
+        if (limit) qs.push(`limit=${limit}`);
+        if (order) qs.push(`order=${order}`);
+        return jsonResult(await api.get(`/api/projects/${encodeURIComponent(slug)}/wiki${qs.length ? `?${qs.join('&')}` : ''}`));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'get_wiki',
+    {
+      title: 'Read one wiki page',
+      description: 'Returns one wiki page in full. `ref` takes either the page slug (what a human says) or the internal id (wiki-<uuid>) — renaming a page changes its slug but never its id, so ids stay safe to store. Read the page before rewriting it: write_wiki with mode="replace" overwrites the body wholesale. Pass rev=<n> to read an older revision of the page instead of the current one (list them with list_wiki_revisions); to put an old revision back, do not paste its body into a write — use write_wiki mode="restore", which cannot mangle the prose in transit.',
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        ref: z.string().min(1).describe('Page slug (e.g. "deploy-notes") or id (wiki-<uuid>).'),
+        rev: z.coerce.number().int().positive().optional().describe('Revision number to read. Omit for the current page.'),
+      }),
+    },
+    async ({ slug, ref, rev }) => {
+      try {
+        const base = `/api/projects/${encodeURIComponent(slug)}/wiki/${encodeURIComponent(ref)}`;
+        return jsonResult(await api.get(rev ? `${base}/revisions/${rev}` : base));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'list_wiki_revisions',
+    {
+      title: 'List the revision history of a wiki page',
+      description: [
+        'Returns what this page said before, newest first — rev number, who wrote it, when, and the body length. Bodies are not included (a history of twenty full documents is expensive to skim); read one with get_wiki rev=<n>.',
+        'Use it to answer "what did this say last week", to see whether a write of yours dropped something, and to find the rev to hand back to write_wiki mode="restore".',
+        'Consecutive writes by the same actor within 30 minutes fold into one revision rather than piling up, so the list stays readable — a working session is one entry, not eight. The practical guarantee: whatever an agent does to a page in one session, the body from before that session is still a separate revision.',
+        'Revisions start at the moment the ground gained this feature; edits older than that were never recorded and cannot be recovered.',
+      ].join(' '),
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        ref: z.string().min(1).describe('Page slug or id.'),
+        limit: z.coerce.number().int().positive().optional(),
+        order: z.enum(['asc', 'desc']).optional().describe('By revision number. Default "desc" (newest first).'),
+      }),
+    },
+    async ({ slug, ref, limit, order }) => {
+      try {
+        const qs = [];
+        if (limit) qs.push(`limit=${limit}`);
+        if (order) qs.push(`order=${order}`);
+        const path = `/api/projects/${encodeURIComponent(slug)}/wiki/${encodeURIComponent(ref)}/revisions`;
+        return jsonResult(await api.get(`${path}${qs.length ? `?${qs.join('&')}` : ''}`));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'write_wiki',
+    {
+      title: 'Create or update a wiki page',
+      description: [
+        'Writes one wiki page. Creates it if the page slug is new, updates it otherwise — you do not need to check first.',
+        'Write what the tree cannot hold and what a maintainer would otherwise have to reconstruct: why a decision went the way it did, the vocabulary this project uses, what an investigation concluded. Do not restate the structure — that is what nodes are for.',
+        '**A page is a description, not a log.** Write it in the present tense, as a reference entry for the thing: how it works now, and the reasons that still constrain it. Do not append what you just did, do not add dated entries or a change-history section, do not keep progress checklists here — those go to bugs, plan nodes, list_events, and record_commit, and the page\'s own past is already kept in its revisions. When something changes, rewrite the sentence that is now wrong rather than adding a sentence saying it changed.',
+        'mode="replace" (default) overwrites the whole body — read the page first, or you will drop what was there; this is the normal way to update a page. mode="append" is the narrow case: adding a section the page genuinely lacked, never tacking on this session\'s summary. mode="restore" puts an earlier revision back: pass rev=<n> and nothing else, and the page returns to what it said then.',
+        'node attaches the page to a node; omit it and the page floats free, which is fine and common early on. Attach it later once the tree has a place for it. Deleting that node detaches the page rather than deleting it.',
+        'Every write is kept as a revision, so a replace that drops prose can be undone (list_wiki_revisions, then mode="restore"). Consecutive writes by the same actor within 30 minutes fold into one revision instead of piling up, which means the body from before your session stays recoverable as its own revision no matter how many times you rewrite the page now.',
+        'Pass newRevision=true when the page moves to a new stage rather than being polished further — most importantly when you first write back what you actually built over a page that until now held the plan. Folding is judged by clock and author, which cannot tell "still drafting" from "the plan became the thing"; only you know that, and without the flag the plan is quietly overwritten by its own outcome.',
+        'rename moves the page to a new slug, keeping its id and its whole revision history — do not create a new page and delete the old one, that throws the history away.',
+        'The response tells you what the write did: rev is the revision it landed in, coalesced says whether it folded into your previous one, and previousBodyChars is how long the body was before you wrote. If previousBodyChars is much larger than what you just wrote, you replaced someone\'s work — check list_wiki_revisions before moving on.',
+        'baseRev is optional and is how you avoid clobbering a concurrent edit: pass the rev you read, and the write is refused if the page moved on since. Use it when you read, think, then write.',
+        'The change also lands in the ground\'s history (list_events, entityType="wiki"), where the body is recorded as a length delta rather than a copy of the prose — the prose itself lives in the revisions.',
+        'Requires a write-scope token.',
+      ].join(' '),
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        page: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).describe('Page slug — lowercase letters, digits, hyphens. The name humans use, e.g. "deploy-notes".'),
+        title: z.string().min(1).max(200).optional().describe('Display title. Required when creating a page.'),
+        body: z.string().optional().describe('Markdown body. With mode="append" this is the text to add. Ignored by mode="restore".'),
+        node: z.string().nullable().optional().describe('Node id to attach to. null detaches. Omit to leave the current attachment untouched.'),
+        mode: z.enum(['replace', 'append', 'restore']).optional().describe('"replace" (default) overwrites the body — the normal way to update a page; "append" adds a missing section to the end (not a session summary); "restore" brings back the revision named by rev.'),
+        rev: z.coerce.number().int().positive().optional().describe('With mode="restore": the revision number to bring back (from list_wiki_revisions).'),
+        baseRev: z.coerce.number().int().positive().optional().describe('The revision you based this write on. If the page has moved past it, the write is refused instead of overwriting.'),
+        // 문자열도 받는다. 어떤 MCP 클라이언트는 boolean 인자를 "true"로 직렬화해서
+        // 보내는데, 그 경우 z.boolean()은 통째로 거부한다 — 계획이 덮이는 걸 막으라고
+        // 만든 플래그가 정작 클라이언트마다 안 먹으면 없느니만 못하다.
+        // z.coerce.boolean()은 쓰면 안 된다: "false"가 true가 된다.
+        newRevision: z.union([z.boolean(), z.enum(['true', 'false']).transform(v => v === 'true')])
+          .optional().describe('Force a new revision instead of folding into the last one. Use when this write ends one stage of the page and begins another — above all when replacing a plan with what was actually built.'),
+        rename: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).optional().describe('New page slug. Keeps the id and the revision history; refused if that name is taken.'),
+      }),
+    },
+    async ({ slug, page, title, body, node, mode, rev, baseRev, newRevision, rename }) => {
+      try {
+        const payload = { slug: page };
+        if (title !== undefined) payload.title = title;
+        if (body !== undefined) payload.body = body;
+        if (node !== undefined) payload.node = node;
+        if (mode !== undefined) payload.mode = mode;
+        if (rev !== undefined) payload.rev = rev;
+        if (baseRev !== undefined) payload.baseRev = baseRev;
+        if (newRevision !== undefined) payload.newRevision = newRevision;
+        if (rename !== undefined) payload.rename = rename;
+        const written = await api.put(`/api/projects/${encodeURIComponent(slug)}/wiki`, payload);
+        // 로그 형태 경고는 쓰기를 막지 않는다 — 이미 저장된 뒤에 붙인다. 판정이 휴리스틱이라
+        // 거부하면 정당한 문서까지 막히고, 어차피 리비전이 있어 되돌릴 수 있다.
+        // 검사 대상은 저장된 본문이다: append면 이어붙인 결과 전체를 봐야 한다.
+        const warnings = wikiLogShapeCheck(written?.body)
+          .concat(toolMarkupCheck({ title, body: written?.body }));
+        return jsonResult(warnings.length ? { ...written, warnings } : written);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'delete_wiki',
+    {
+      title: 'Delete a wiki page',
+      description: 'Permanently removes a wiki page **and its whole revision history** — unlike an overwrite, this cannot be undone, and only the history entry (list_events) remains to say it happened. Prefer rewriting a page that went stale over deleting it: a page that records a decision you have since reversed is worth keeping with the reversal written in. Deleting is for a page that should never have existed, not for one that is out of date.',
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        ref: z.string().min(1).describe('Page slug or id.'),
+      }),
+    },
+    async ({ slug, ref }) => {
+      try {
+        return jsonResult(await api.delete(`/api/projects/${encodeURIComponent(slug)}/wiki/${encodeURIComponent(ref)}`));
       } catch (e) { return errorResult(e); }
     },
   );

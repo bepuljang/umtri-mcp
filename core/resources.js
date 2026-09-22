@@ -23,11 +23,11 @@ const RESOURCES = [
     description: 'Reclassification policy, twig vs leaf decision matrix, twig promotion signals, redundant-child antipattern, Korean label heuristics. Read only when restructuring an existing tree or wrestling with a borderline classification.',
   },
   {
-    name: 'seasons-human-only',
-    uri: 'umtri://rules/seasons-human-only',
-    file: 'seasons-human-only.md',
-    title: 'Seasons are human-only',
-    description: 'AI tools must not create seasons. Defaults and exceptions explained.',
+    name: 'seasons',
+    uri: 'umtri://rules/seasons',
+    file: 'seasons.md',
+    title: 'Seasons need the human\'s word',
+    description: 'create_season exists but is gated: the first call only reports what would be sealed, and creation needs confirm:true after the user agrees. Read before opening a season, or when unsure which season a node belongs to.',
   },
   {
     name: 'transplant',
@@ -49,6 +49,13 @@ const RESOURCES = [
     file: 'commit-sync.md',
     title: 'Keep the ground in step with commits',
     description: 'Umtri never reads git — nodes drift unless something records the change. Recommends writing a short commit-sync policy into the repo\'s own agent rules file (CLAUDE.md/AGENTS.md), with a snippet to adapt. Read when setting Umtri up in a repo, or when a commit turns out to have left the tree behind.',
+  },
+  {
+    name: 'wiki',
+    uri: 'umtri://rules/wiki',
+    file: 'wiki.md',
+    title: 'How to write a ground\'s wiki',
+    description: 'A wiki page is named after a thing, and its revisions are that thing\'s life: rev 1 is the plan, later revisions are what it became, the newest is what is true now. Covers naming (the subject, never "prd-x"), writing the plan first, marking the plan→built boundary with newRevision, what stays on the page versus what becomes history (a live reason is current spec, not history), when to split pages, replace/append/restore/baseRev, attaching to nodes, and why deleting is almost never right. Read before writing or reorganizing wiki pages.',
   },
   {
     name: 'system-structure',

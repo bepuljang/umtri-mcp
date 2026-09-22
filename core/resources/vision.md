@@ -43,4 +43,4 @@ When you (an AI tool) work on an Umtri ground:
   touched (`metadata.implements`, `metadata.commits`) via the API — e.g. a
   GitHub Action calling `record_commit` on merge. Umtri stores the form; it
   does not execute the pipeline.
-- It does not create seasons (see `umtri://rules/seasons-human-only`).
+- It does not open a season on its own judgment (see `umtri://rules/seasons`).

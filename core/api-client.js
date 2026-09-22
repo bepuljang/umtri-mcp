@@ -36,7 +36,12 @@ export function createApiClient({ baseUrl, getToken }) {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       if (res.status === 403) {
-        throw new Error(`${method} ${path} → 403: token lacks write scope. Generate a 'write' token in Settings → API Tokens.`);
+        // 403은 한 가지가 아니다 — write scope 없음과 admin 전용 경로(feedback 관리 등)가 같이 온다.
+        // 서버가 준 이유를 버리고 토큰 안내로 덮으면, 관리자 경로에서 막힌 사람이 멀쩡한 토큰을
+        // 다시 발급하러 간다. 이유를 그대로 싣고, 스코프 문제일 때만 발급 안내를 덧붙인다.
+        const reason = text.slice(0, 200) || 'forbidden';
+        const hint = /scope/i.test(text) ? " Generate a 'write' token in Settings → API Tokens." : '';
+        throw new Error(`${method} ${path} → 403: ${reason}${hint}`);
       }
       throw new Error(`${method} ${path} → ${res.status}: ${text.slice(0, 200)}`);
     }

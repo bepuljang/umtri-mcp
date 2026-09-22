@@ -23,22 +23,26 @@ You MAY:
   `hard` only to clean up genuine mistakes — it is irreversible.
 
 You MAY NOT:
-- **Create or modify seasons.** Seasons are always human-only
-  (see umtri://rules/seasons-human-only). The human lays down the historical
-  seasons; you fill nodes into them.
+- **Open a season without asking.** `create_season` exists, but it only acts
+  after the user confirms (see umtri://rules/seasons). Laying down historical
+  seasons is exactly the case where you propose and they decide.
 - **Root (settle) a ground.** Ending transplant is human-only — done from the
   UI ("Root this ground"). You cannot root via MCP.
 
-## Re-opening transplant (`reopen_transplant`)
+## Rooting is final
 
-A rooted ground can be put back into transplant with the `reopen_transplant`
-tool — but **only when the user explicitly asks for it** (e.g. "switch this
-ground to transplanting", "옮겨심기로 바꿔줘"). This removes safety guardrails,
-so you must **never** decide to re-open on your own initiative, however
-convenient it would be for a restructuring task. No explicit request → do not
-call it; instead tell the user the ground is rooted and ask whether they want
-to re-open transplant. After re-opening, the user roots it again from the UI
-when the work is done.
+Once a ground is rooted, **nothing re-opens transplant** — not you, not the
+person who owns the ground. There is no `reopen_transplant` tool, and
+`POST /api/projects/:slug/root` refuses `rooted: false`. Only an administrator
+can re-open it, out of band.
+
+This is deliberate. Re-opening unlocks every past season at once, so a window
+meant for the first import would otherwise become the standard way around a
+guard. If a rooted ground genuinely needs restructuring, say so plainly and
+let the human decide whether to take it to an administrator.
+
+Most of what people reach for transplanting to do does not need it — a stale
+`metadata.implements` on a past node is editable as it stands (see below).
 
 ## Audit stamp
 

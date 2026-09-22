@@ -73,7 +73,7 @@ nodes are meant to be realized, and how a ground behaves while transplanting.
 ```
 umtri://rules/vocabulary            umtri://rules/transplant
 umtri://rules/vocabulary-detailed   umtri://rules/plan
-umtri://rules/seasons-human-only    umtri://about/vision
+umtri://rules/seasons               umtri://about/vision
 umtri://rules/system-structure
 ```
 
