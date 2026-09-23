@@ -857,7 +857,10 @@ export function registerTools(server, { api }) {
         slug: z.string().min(1).describe('Ground slug.'),
         source: z.string().min(1).describe('Source node id.'),
         target: z.string().min(1).describe('Target node id.'),
-        type: z.string().optional().describe('Edge type. Backend defaults if omitted.'),
+        // 서버(store.createEdge)가 type을 필수로 요구한다. 예전엔 optional + "Backend defaults"라고
+        // 안내해 생략한 에이전트가 매번 한 번씩 거부당했다. 그라운드마다 edge_types가 있어 enum으로
+        // 못 박지 않고 필수 문자열로 둔다.
+        type: z.string().min(1).describe('Edge type — required. "dependency" (source is built on / needs target) or "data_flow" (data moves source → target) — use one of the ground\'s edgeTypes.'),
         label: z.string().optional(),
         metadata: z.record(z.any()).optional(),
       }),
@@ -867,8 +870,7 @@ export function registerTools(server, { api }) {
         const { ok, rejectReason } = validateEdge({ sourceId: source, targetId: target });
         if (!ok) throw new Error(`Rejected by protocol: ${rejectReason}`);
 
-        const body = { source, target };
-        if (type !== undefined) body.type = type;
+        const body = { source, target, type };
         if (label !== undefined) body.label = label;
         if (metadata !== undefined) body.metadata = metadata;
 
