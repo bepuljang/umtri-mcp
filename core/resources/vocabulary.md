@@ -109,9 +109,9 @@ The Bug Codex reads `status` as three states:
 |---|---|---|
 | `open` | wild | found, nobody is on it |
 | `in_progress` | chasing | someone is fixing it right now |
-| `resolved` / `closed` | catched | it landed |
+| `resolved` / `closed` | resolved | it landed |
 
-Move one step at a time: **wild → chasing → catched**.
+Move one step at a time: **wild → chasing → resolved**.
 
 - Starting a fix? Set `status="in_progress"` **before** you work, not after.
 - Landed it? Then `status="resolved"` (optionally with

@@ -64,21 +64,32 @@ function computeDormantSet(nodes) {
   return dormant;
 }
 
-// 버그 필터 어휘 → DB status 집합. 도구 표면은 제품 어휘(wild/chasing/catched)를 쓴다 —
+// 버그 필터 어휘 → DB status 집합. 도구 표면은 제품 어휘(wild/chasing/resolved)를 쓴다 —
 // UI·vocabulary.md가 쓰는 말과 같아야 사람이 본 화면과 도구 응답이 같은 것을 가리킨다.
 // DB 상태값(open/in_progress/…)도 계속 받는다: 기존 호출자를 깨지 않기 위해서다.
 //
 // 'open'은 여기서 **wild와 다르다.** REST의 status=open은 store에서 open+in_progress로
 // 번역되고(앱 대시보드의 Bugs Alive가 그 의미에 기대고 있다) 그래서 REST로는 순수 wild를
 // 뽑을 수 없다. 그 갈래는 이 표에서만 갈린다.
+// 버그 상태 필터 입력. 스키마(에이전트가 보는 enum)에는 'catched'를 싣지 않고, 들어오면
+// 'resolved'로 바꿔 받는다 — 옛 말을 쓰는 호출은 살리되 새로 배우는 쪽엔 한 가지 말만 보이게.
+function bugStatusInput() {
+  return z.preprocess(
+    (v) => (v === 'catched' ? 'resolved' : v),
+    z.enum(['active', 'wild', 'chasing', 'resolved', 'all', 'open', 'in_progress', 'closed']),
+  );
+}
+
 const BUG_STATUS_SETS = {
   active:      ['open', 'in_progress'],
   wild:        ['open'],
   chasing:     ['in_progress'],
-  catched:     ['resolved', 'closed'],
+  // 'resolved'는 끝난 버그 전부(resolved + closed)다. 예전엔 이 자리가 'catched'였고 'resolved'는
+  // DB 값 그대로(closed 제외)였는데, 화면과 도구의 말을 resolved 하나로 합쳤다(2026-09-23).
+  // 'catched'는 스키마에서 뺐고, 들어오면 bugStatusInput()이 'resolved'로 바꿔 받는다.
+  resolved:    ['resolved', 'closed'],
   open:        ['open', 'in_progress'],  // REST status=open과 같은 의미 (하위호환)
   in_progress: ['in_progress'],
-  resolved:    ['resolved'],
   closed:      ['closed'],
 };
 
@@ -348,7 +359,7 @@ export function registerTools(server, { api }) {
         role: z.enum(['structure', 'object', 'action']).optional().describe('Cross-section by role (structure=trunk/limb/twig, object=leaf, action=vein). Parents may fall outside the result.'),
         season: z.string().optional().describe('Born-in delta — return only nodes that first appeared in this season (season id from list_seasons): what grew that season.'),
         descriptions: z.enum(['none', 'excerpt', 'full']).optional().describe('How much of each node/bug description to include in summary view: none (drop them — lightest structural read), excerpt (200-char preview, default), or full (verbatim). Ignored when view="full" (always verbatim).'),
-        bugStatus: z.enum(['active', 'wild', 'chasing', 'catched', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional().describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress) — catched ones are healed erosion, noise on the tree. "wild" for the untouched only, "catched" for healed, "all" for every bug. Raw DB statuses still work. Use list_bugs for richer bug queries (limit/order), get_bug for one you can name.'),
+        bugStatus: bugStatusInput().optional().describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress) — resolved ones are healed erosion, noise on the tree. "wild" for the untouched only, "resolved" for healed, "all" for every bug. Raw DB statuses still work. Use list_bugs for richer bug queries (limit/order), get_bug for one you can name.'),
       }),
     },
     async ({ slug, view, rootId, depth, maxType, role, season, descriptions, bugStatus }) => {
@@ -408,11 +419,11 @@ export function registerTools(server, { api }) {
     'list_bugs',
     {
       title: 'List bugs of a ground',
-      description: 'Scans the bugs (issues eroding the ground) of one ground. Looking at ONE bug you already know the number/id of? Call get_bug instead — no need to list. Bugs default to status="active" (wild + chasing): a healed bug is history, and history is not what a scan is for. Ask for "catched" or "all" when you actually want it. Status speaks the product\'s own words — wild (found, nobody on it) → chasing (someone is fixing it) → catched (it landed) — the same words the UI shows. Each bug has a score (0–8 change-risk; 8 = riskiest), and any bug whose solution carries a checklist also carries solutionProgress ("2/5" — ticked/total), so you can see what is left without opening a single body. Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, seq (the number a human says, "#14"), target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata. Use limit + order to bound a scan (e.g. the 5 newest) instead of pulling every bug.',
+      description: 'Scans the bugs (issues eroding the ground) of one ground. Looking at ONE bug you already know the number/id of? Call get_bug instead — no need to list. Bugs default to status="active" (wild + chasing): a healed bug is history, and history is not what a scan is for. Ask for "resolved" or "all" when you actually want it. Status speaks the product\'s own words — wild (found, nobody on it) → chasing (someone is fixing it) → resolved (it landed) — the same words the UI shows. Each bug has a score (0–8 change-risk; 8 = riskiest), and any bug whose solution carries a checklist also carries solutionProgress ("2/5" — ticked/total), so you can see what is left without opening a single body. Targets: a node, an api, or the ground itself. By default returns a summary view — each bug carries id, seq (the number a human says, "#14"), target, title, score, status, createdAt/resolvedAt, plus a 200-char description excerpt. Each node/api bug also carries impactCount — how many other nodes its target reaches by blast radius (affected direction), so you can spot wide-blast bugs at a glance; call get_impact on that bug for the full reached list. Pass view="full" for full descriptions and metadata. Use limit + order to bound a scan (e.g. the 5 newest) instead of pulling every bug.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
-        status: z.enum(['active', 'wild', 'chasing', 'catched', 'all', 'open', 'in_progress', 'resolved', 'closed']).optional()
-          .describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress). "wild" = found but untouched, "chasing" = someone is on it, "catched" = healed (resolved + closed), "all" = every bug. The raw DB statuses are accepted too; note "open" means wild + chasing there (REST semantics), so pass "wild" when you want only the untouched ones.'),
+        status: bugStatusInput().optional()
+          .describe('Which bugs to include. Default "active" = wild + chasing (open + in_progress). "wild" = found but untouched, "chasing" = someone is on it, "resolved" = healed (resolved + closed), "all" = every bug. The raw DB statuses are accepted too; note "open" means wild + chasing there (REST semantics), so pass "wild" when you want only the untouched ones.'),
         limit: z.coerce.number().int().positive().optional().describe('Return at most this many bugs (applied after the status filter). Omit for all matching.'),
         order: z.enum(['asc', 'desc']).optional().describe('By creation time: "asc" oldest first (default), "desc" newest first. Pair with limit for "the N newest".'),
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for a compact list; full for verbatim descriptions + metadata.'),
@@ -424,14 +435,14 @@ export function registerTools(server, { api }) {
         const qs = ['impact=true']; // 각 버그에 impactCount(blast radius 크기) 자동 첨부
         if (order) qs.push(`order=${encodeURIComponent(order)}`);
         // status·limit을 서버로 넘기는 건 REST 필터가 원하는 집합과 **정확히** 같을 때만이다.
-        // wild(순수 open)·catched(resolved+closed)는 REST에 대응 값이 없어 여기서 거른다 —
+        // wild(순수 open)·resolved(resolved+closed)는 REST에 대응 값이 없어 여기서 거른다 —
         // 그때 limit까지 넘기면 걸러지기 전 개수로 잘려 결과가 모자란다.
         const REST_EXACT = {
           active: 'open', open: 'open',            // REST의 open = open + in_progress
           chasing: 'in_progress', in_progress: 'in_progress',
-          resolved: 'resolved', closed: 'closed',
+          closed: 'closed',   // resolved는 closed까지 묶여 REST 값과 다르다 — 여기서 거른다
         };
-        const exact = REST_EXACT[want] || null;    // wild·catched는 REST에 대응 값이 없다
+        const exact = REST_EXACT[want] || null;    // wild·resolved는 REST에 대응 값이 없다
         if (exact) qs.push(`status=${exact}`);
         if (exact || want === 'all') { if (limit) qs.push(`limit=${limit}`); }
         let bugs = await api.get(`/api/projects/${encodeURIComponent(slug)}/bugs?${qs.join('&')}`);
@@ -448,7 +459,7 @@ export function registerTools(server, { api }) {
     'get_bug',
     {
       title: 'Get one bug of a ground',
-      description: 'Returns a single bug by reference — the cheap path when you already know which bug you mean. `ref` accepts either the human-facing number shown in the UI (seq — "14" or #14) or the internal id (bug-<uuid>), so a human saying "#8" needs no listing at all. Unlike list_bugs this ignores status: a catched bug is still readable by number, which is how you review what a past fix actually did. Use list_bugs only to scan for bugs you cannot yet name. The response carries the full description and metadata, plus impact — the blast radius reached from the bug\'s target (reachedCount, the reached nodes with hop distance, and other active bugs sitting in that radius). Numbers are per-ground and never reused, so a deleted bug leaves a gap rather than shifting the others. Returns an error if no bug matches.',
+      description: 'Returns a single bug by reference — the cheap path when you already know which bug you mean. `ref` accepts either the human-facing number shown in the UI (seq — "14" or #14) or the internal id (bug-<uuid>), so a human saying "#8" needs no listing at all. Unlike list_bugs this ignores status: a resolved bug is still readable by number, which is how you review what a past fix actually did. Use list_bugs only to scan for bugs you cannot yet name. The response carries the full description and metadata, plus impact — the blast radius reached from the bug\'s target (reachedCount, the reached nodes with hop distance, and other active bugs sitting in that radius). Numbers are per-ground and never reused, so a deleted bug leaves a gap rather than shifting the others. Returns an error if no bug matches.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         ref: z.union([z.string().min(1), z.coerce.number().int().positive()])
@@ -967,7 +978,7 @@ export function registerTools(server, { api }) {
       description: [
         'Partial update of a bug. Most common use: status transition.',
         'Send only the fields that actually change. A status transition is patch:{status} alone — do not re-send an unchanged solution, description, or metadata. Those fields carry prose, and re-emitting them costs far more time than the update itself and risks a malformed-argument retry.',
-        'Follow the lifecycle one step at a time: open (wild) → in_progress (chasing) → resolved (catched).',
+        'Follow the lifecycle one step at a time: open (wild) → in_progress (chasing) → resolved.',
         'Set status="in_progress" the moment you start the fix, not after it lands — it is the only marker that someone is already on this bug, so a parallel agent can see the work in flight instead of duplicating it. Then set "resolved" once it ships.',
         'Skipping straight from open to resolved returns a warning (not a rejection) — acceptable when the fix was genuinely instant.',
         'Other patchable fields: title, description, solution, score (0–8 change-risk), metadata.',

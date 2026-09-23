@@ -320,7 +320,7 @@ export function toolMarkupCheck(fields) {
 
 // ── bug lifecycle ────────────────────────────────────────────────────
 // Bug Codex reads status as three states: open=wild, in_progress=chasing,
-// resolved|closed=catched. The recommended path is wild → chasing → catched:
+// resolved|closed=resolved. The recommended path is wild → chasing → resolved:
 // flip to in_progress the moment work starts, then resolve when it lands.
 //
 // Why this matters beyond tidiness: in_progress is the only signal that someone
@@ -328,26 +328,26 @@ export function toolMarkupCheck(fields) {
 // "chasing", so a second agent (or the human) has no way to see the work in
 // flight and may start the same fix. The jump also collapses the two timestamps
 // the codex uses to tell "found → started" from "started → shipped".
-const CATCHED_STATUSES = new Set(['resolved', 'closed']);
+const RESOLVED_STATUSES = new Set(['resolved', 'closed']);
 
 export function bugStatusTransitionCheck(from, to) {
   if (!from || !to || from === to) return null;
 
-  // wild → catched, skipping chasing.
-  if (from === 'open' && CATCHED_STATUSES.has(to)) {
+  // wild → resolved, skipping chasing.
+  if (from === 'open' && RESOLVED_STATUSES.has(to)) {
     return {
       rule: 'bug-skips-chasing',
       severity: 'info',
-      message: `Bug goes straight from "open" (wild) to "${to}" (catched), skipping "in_progress" (chasing). Recommended flow: set status="in_progress" when you start the fix, then "${to}" once it lands. in_progress is the only marker that someone is already on this bug — without it a parallel agent can't tell the work is in flight, and the codex loses the found → started → shipped timeline. If the fix was genuinely instant, this is fine as-is.`,
+      message: `Bug goes straight from "open" (wild) to "${to}", skipping "in_progress" (chasing). Recommended flow: set status="in_progress" when you start the fix, then "${to}" once it lands. in_progress is the only marker that someone is already on this bug — without it a parallel agent can't tell the work is in flight, and the codex loses the found → started → shipped timeline. If the fix was genuinely instant, this is fine as-is.`,
     };
   }
 
-  // Re-opening a caught bug — not wrong, but worth naming so it isn't a silent regression.
-  if (CATCHED_STATUSES.has(from) && to === 'open') {
+  // Re-opening a resolved bug — not wrong, but worth naming so it isn't a silent regression.
+  if (RESOLVED_STATUSES.has(from) && to === 'open') {
     return {
       rule: 'bug-reopened',
       severity: 'info',
-      message: `Bug moves from "${from}" (catched) back to "open" (wild) — it escaped. If you are resuming work rather than reporting a regression, "in_progress" (chasing) says so more precisely. If it is a regression, note what shipped and broke it in the description.`,
+      message: `Bug moves from "${from}" back to "open" (wild) — it escaped. If you are resuming work rather than reporting a regression, "in_progress" (chasing) says so more precisely. If it is a regression, note what shipped and broke it in the description.`,
     };
   }
 
