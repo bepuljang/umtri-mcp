@@ -26,6 +26,13 @@ on:
     tags: ['v*.*.*']
   workflow_dispatch:
 
+# 같은 태그로 실행이 둘 뜨는 일이 있다(브랜치와 태그를 한 번에 푸시할 때).
+# 둘이 동시에 발행하면 먼저 간 쪽이 버전을 staged로 잡고 나머지가 409로 죽는다 —
+# 발행은 성공했는데 실패 알림이 오는, 읽는 사람을 헷갈리게 하는 상태가 된다.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest

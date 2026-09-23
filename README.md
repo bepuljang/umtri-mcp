@@ -57,9 +57,10 @@ appear and then error, re-check the token and its scope — `read` tokens cannot
 `list_events`
 
 **Write** — `create_project`, `create_node`, `update_node`, `delete_node`, `create_edge`,
-`delete_edge`, `create_api`, `update_api`, `delete_api`, `create_bug`, `update_bug`, `delete_bug`
+`delete_edge`, `create_api`, `update_api`, `delete_api`, `create_bug`, `update_bug`, `delete_bug`,
+`create_season` (acts only after the user confirms)
 
-**Plan loop** — `commit_plan`, `record_commit`, `reopen_transplant`
+**Plan loop** — `commit_plan`, `record_commit`
 
 `get_graph` returns a slice, not a dump: scope by subtree (`rootId`), by layer (`maxType`), by role,
 or by season, and control description weight separately. A large tree stays cheap to read.
