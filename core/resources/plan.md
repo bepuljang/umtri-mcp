@@ -26,6 +26,10 @@ back onto the nodes. The human commits when satisfied.
    didn't draw (child leaves/veins, an extra twig), create them with
    `metadata.plan = true` too — everything you add stays reviewable until the
    human commits. Do not create finalized (non-plan) nodes during realization.
+   **Except a trunk:** trunks are the frame of the tree and are never plan —
+   `create_node`/`update_node` reject a trunk with `metadata.plan`. If the brief
+   needs a new trunk (a new app or service), ask the human to add it; then
+   draw the plan as limbs under it.
 5. **Commit when realized.** Promote a plan node to the real tree with
    `commit_plan` — it clears `metadata.plan`. The tool **rejects the commit
    unless the node already has `metadata.implements`** (step 3), so attach the

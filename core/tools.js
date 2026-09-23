@@ -660,7 +660,7 @@ export function registerTools(server, { api }) {
         'The tool validates against protocol policies. Hierarchy violations are rejected. Soft issues (reserved-domain labels, leaf↔vein heuristic, trunk naming) come back as warnings in the response — reconsider before continuing if warnings appear.',
         'After creating a leaf/vein, consider its connections: if it calls/feeds another node add an api (create_api), if it depends on/is built on another add an edge (create_edge). The response carries a connectionCheck reminder. See umtri://rules/system-structure (Connections).',
         'Do not open a new season just because none fits — attach to the now-season, or ask the user. create_season needs their confirmation (umtri://rules/seasons).',
-        'When realizing a human-drawn plan brief, any detail nodes you add should carry metadata.plan=true and the realized node needs metadata.implements — see umtri://rules/plan.',
+        'When realizing a human-drawn plan brief, any detail nodes you add should carry metadata.plan=true and the realized node needs metadata.implements — see umtri://rules/plan. A trunk is never plan: metadata.plan on a trunk is rejected.',
       ].join(' '),
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
