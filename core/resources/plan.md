@@ -35,7 +35,9 @@ back onto the nodes. The human commits when satisfied.
    unless the node already has `metadata.implements`** (step 3), so attach the
    source paths first. The human can also commit from the UI. If you are unsure
    the realization is complete, leave it as plan and ask the human rather than
-   committing.
+   committing. **Commit from the top down:** a node whose parent is still a plan
+   is rejected — commit the parent first. (A committed node under a plan parent
+   would vanish from the tree whenever Plan mode is off.)
 6. **Record the commit (CI/CD form record).** When the code lands in git, the
    commit is recorded onto the nodes it touched via `record_commit`
    (sha + changed files → appended to each matching node's `metadata.commits`).

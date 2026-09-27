@@ -814,7 +814,7 @@ export function registerTools(server, { api }) {
     'commit_plan',
     {
       title: 'Commit a realized plan node',
-      description: 'Promotes a plan node (metadata.plan=true) to the real tree by clearing the plan flag. VERIFICATION GATE: the node must already carry metadata.implements (the source path(s) you wrote) — without it the commit is rejected, because an uncommitted plan node with no implements is not considered realized. Call this only after you have actually written the code and recorded implements via update_node. See umtri://rules/plan.',
+      description: 'Promotes a plan node (metadata.plan=true) to the real tree by clearing the plan flag. VERIFICATION GATE: the node must already carry metadata.implements (the source path(s) you wrote) — without it the commit is rejected, because an uncommitted plan node with no implements is not considered realized. Call this only after you have actually written the code and recorded implements via update_node. Commit from the top down: a node whose parent is still a plan is rejected — commit the parent first. See umtri://rules/plan.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         id: z.string().min(1).describe('Plan node id to commit.'),
