@@ -725,7 +725,7 @@ export function registerTools(server, { api }) {
     'update_node',
     {
       title: 'Update a node',
-      description: 'Partial update of a node. Patchable fields: label, type, parent, season, description, tags, metadata, sproutedAt. Type change reclassifies role; parent change recomputes the ltree path automatically. On a grown (past-season) node, only the tree\'s shape and timeline are locked — parent, season, type and sproutedAt are rejected. Content fields (label, description, metadata, tags) stay editable, so you can keep metadata.implements current when code moves without reopening transplanting. Moving any node into a `past` season is rejected. Both restrictions lift while the ground is transplanting (project.transplanting=true), so historical structure can be reconstructed (see umtri://rules/transplant). Same protocol validation as create_node — reject on hierarchy violations, warn on soft issues.',
+      description: 'Partial update of a node. Patchable fields: label, type, parent, season, description, tags, metadata, sproutedAt. metadata is merged key by key: only the keys you send change, keys you leave out (commits that record_commit accumulated, transplanted, and so on) are kept, and a key sent as null is removed. So to change implements, send just { metadata: { implements: [...] } }. Type change reclassifies role; parent change recomputes the ltree path automatically. On a grown (past-season) node, only the tree\'s shape and timeline are locked — parent, season, type and sproutedAt are rejected. Content fields (label, description, metadata, tags) stay editable, so you can keep metadata.implements current when code moves without reopening transplanting. Moving any node into a `past` season is rejected. Both restrictions lift while the ground is transplanting (project.transplanting=true), so historical structure can be reconstructed (see umtri://rules/transplant). Same protocol validation as create_node — reject on hierarchy violations, warn on soft issues.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         id: z.string().min(1).describe('Node id.'),
@@ -736,7 +736,7 @@ export function registerTools(server, { api }) {
           season: z.string().nullable().optional().describe('New season id, or null to detach from any season. Past seasons are rejected.'),
           description: z.string().nullable().optional(),
           tags: z.array(z.string()).optional(),
-          metadata: z.record(z.any()).optional(),
+          metadata: z.record(z.any()).optional().describe('Keys to change — merged into the existing metadata. null removes a key. Keys you omit are kept.'),
           sproutedAt: z.string().datetime({ offset: true }).nullable().optional().describe('Effective creation time (ISO 8601 with offset). Set to null to clear and fall back to the system timestamp. Use only for back-filling historical projects.'),
         }).describe('Only the fields you want to change.'),
       }),
@@ -758,7 +758,9 @@ export function registerTools(server, { api }) {
           const newLabel = patch.label ?? current.label;
           const newParentId = patch.parent !== undefined ? patch.parent : current.parent;
           const newDescription = patch.description !== undefined ? patch.description : current.description;
-          const newMetadata = patch.metadata !== undefined ? patch.metadata : current.metadata;
+          const newMetadata = patch.metadata !== undefined
+            ? Object.fromEntries(Object.entries({ ...(current.metadata || {}), ...patch.metadata }).filter(([, v]) => v !== null))
+            : current.metadata;
           const parentType = newParentId
             ? (graph.nodes || []).find(n => n.id === newParentId)?.type ?? null
             : null;
@@ -775,7 +777,23 @@ export function registerTools(server, { api }) {
           warnings = warnings.concat(result.warnings);
         }
 
-        const updated = await api.put(`/api/projects/${encodeURIComponent(slug)}/nodes/${encodeURIComponent(id)}`, patch);
+        // metadata는 키 단위로 병합해서 보낸다. REST는 metadata를 통째로 교체하는데(앱의 plan 커밋이
+        // 그 동작에 기댄다), 에이전트가 implements만 보내면 record_commit이 쌓은 commits까지 조용히
+        // 지워졌다(건의 #2). 그래서 이 도구에서 현재 값을 읽어 합친 전체를 보낸다. null은 키 삭제.
+        let body = patch;
+        if (patch.metadata !== undefined && patch.metadata !== null) {
+          const g = await api.get(`/api/projects/${encodeURIComponent(slug)}/graph?root=${encodeURIComponent(id)}&depth=0`);
+          const current = (g.nodes || []).find(n => n.id === id);
+          if (!current) throw new Error(`Node "${id}" not found in ground "${slug}".`);
+          const merged = { ...(current.metadata || {}) };
+          for (const [k, v] of Object.entries(patch.metadata)) {
+            if (v === null) delete merged[k];
+            else merged[k] = v;
+          }
+          body = { ...patch, metadata: merged };
+        }
+
+        const updated = await api.put(`/api/projects/${encodeURIComponent(slug)}/nodes/${encodeURIComponent(id)}`, body);
         return jsonResult(warnings.length ? { ...updated, warnings } : updated);
       } catch (e) { return errorResult(e); }
     },
