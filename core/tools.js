@@ -592,6 +592,8 @@ export function registerTools(server, { api }) {
     },
   );
 
+  // visibility 인자는 두지 않는다. 배지를 밖에 보이는 경로가 없어 받아도 버려졌고(#70), 트리는
+  // 경로·연동·버그까지 담은 지도라 공개 여부는 에이전트가 아니라 사람이 정할 일이다.
   server.registerTool(
     'create_project',
     {
@@ -601,17 +603,15 @@ export function registerTools(server, { api }) {
         slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,49}$/).describe('URL slug. Lowercase letters, digits, hyphens; 1–50 chars.'),
         name: z.string().min(1).max(200).describe('Display name.'),
         description: z.string().optional(),
-        visibility: z.enum(['private', 'unlisted', 'public']).optional().describe('Defaults to private.'),
         org: z.string().min(1).optional().describe('Team slug to create the ground in. Omit for your personal space. You must own the team.'),
       }),
     },
-    async ({ slug, name, description, visibility, org }) => {
+    async ({ slug, name, description, org }) => {
       try {
         const markupWarnings = toolMarkupCheck({ description });
         const body = { slug, name };
         if (org !== undefined) body.org = org;
         if (description !== undefined) body.description = description;
-        if (visibility !== undefined) body.visibility = visibility;
         const created = await api.post('/api/projects', body);
         return jsonResult(markupWarnings.length ? { ...created, warnings: markupWarnings } : created);
       } catch (e) { return errorResult(e); }
