@@ -5,7 +5,7 @@
 //   - api: createApiClient(...) 결과 — get/post/put/patch/delete
 
 import { z } from 'zod';
-import { validateNode, validateEdge, validateUpdate, validateBugUpdate, wikiLogShapeCheck, toolMarkupCheck } from './policy.js';
+import { validateNode, validateEdge, validateUpdate, validateBugUpdate, toolMarkupCheck } from './policy.js';
 
 // LLM이 소비하는 결과 — 들여쓰기는 순수 토큰 낭비라 minify. (큰 그래프에서 ~19% 절감)
 function jsonResult(data) {
@@ -177,6 +177,12 @@ function compressProjects(projects, { descMode = 'excerpt' } = {}) {
       openBugs: p.openBugs,
       seasonCount: p.seasonCount,
     };
+    // 팀 ground면 소속과 내 역할을 싣는다 — viewer면 쓰기 도구가 403으로 막힌다는 걸 미리 알 수 있게.
+    // personal이면 생략(대부분의 ground가 personal이라 매번 실으면 잡음이다).
+    if (p.org && p.org.kind === 'team') {
+      out.org = p.org.slug;
+      out.role = p.role;
+    }
     // 문서가 있다는 사실만 흘린다. 0이면 생략 — 대부분의 ground가 0이라 매번 실으면 잡음이다.
     if (p.wikiCount) out.wikiCount = p.wikiCount;
     if (p.nowSeasonLabel) out.nowSeasonLabel = p.nowSeasonLabel;
@@ -329,7 +335,7 @@ export function registerTools(server, { api }) {
     'list_projects',
     {
       title: 'List grounds (projects)',
-      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. A ground with wiki pages also carries wikiCount — prose the tree cannot hold (conventions, decisions, glossary); read it with list_wiki. Pass view="full" for all fields (seedMeta — the ground\'s human-written intent: goal, endDate, budget, audience — plus typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
+      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. A ground that belongs to a team also carries org (the team slug) and role (owner/editor/viewer) — a viewer can read but every write tool returns 403 there. A ground with wiki pages also carries wikiCount — prose the tree cannot hold (conventions, decisions, glossary); read it with list_wiki. Pass view="full" for all fields (seedMeta — the ground\'s human-written intent: goal, endDate, budget, audience — plus typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
       inputSchema: z.object({
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for a compact list; full for every field.'),
       }),
@@ -590,18 +596,20 @@ export function registerTools(server, { api }) {
     'create_project',
     {
       title: 'Create a new ground (project)',
-      description: 'Creates a new ground. Slug must match /^[a-z0-9][a-z0-9-]{0,49}$/ and be unique. The authenticated user owns it. Requires a write-scope token.',
+      description: 'Creates a new ground. Slug must match /^[a-z0-9][a-z0-9-]{0,49}$/ and be unique. By default it goes into the authenticated user\'s personal space; pass org (a team slug, as list_projects shows it) to create it in a team — only the team\'s owner can. Requires a write-scope token.',
       inputSchema: z.object({
         slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,49}$/).describe('URL slug. Lowercase letters, digits, hyphens; 1–50 chars.'),
         name: z.string().min(1).max(200).describe('Display name.'),
         description: z.string().optional(),
         visibility: z.enum(['private', 'unlisted', 'public']).optional().describe('Defaults to private.'),
+        org: z.string().min(1).optional().describe('Team slug to create the ground in. Omit for your personal space. You must own the team.'),
       }),
     },
-    async ({ slug, name, description, visibility }) => {
+    async ({ slug, name, description, visibility, org }) => {
       try {
         const markupWarnings = toolMarkupCheck({ description });
         const body = { slug, name };
+        if (org !== undefined) body.org = org;
         if (description !== undefined) body.description = description;
         if (visibility !== undefined) body.visibility = visibility;
         const created = await api.post('/api/projects', body);
@@ -777,14 +785,15 @@ export function registerTools(server, { api }) {
     'delete_node',
     {
       title: 'Soft-delete a node',
-      description: 'Sets removed_at on the node. By policy this tool rejects deletion if the node has any active descendant — delete children explicitly first to avoid accidental cascades. (The underlying REST API would cascade; the MCP layer guards against silent loss.) EXCEPTION — while the ground is transplanting (project.transplanting=true), the active-descendant guard is lifted (subtree cascade allowed) and you may pass hard=true to permanently remove import mistakes, including grown (past-season) nodes. Once the human roots the ground, normal guards return.',
+      description: 'Sets removed_at on the node. By default this tool rejects deletion if the node has any active descendant, so a subtree is never lost silently. To soft-delete the node together with all its active descendants, pass cascade=true — only when the human asked to remove the whole branch; soft-deleted nodes cannot be restored. The response lists the cascaded ids. EXCEPTION — while the ground is transplanting (project.transplanting=true), the active-descendant guard is lifted (subtree cascade allowed) and you may pass hard=true to permanently remove import mistakes, including grown (past-season) nodes. Once the human roots the ground, normal guards return.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         id: z.string().min(1).describe('Node id.'),
+        cascade: z.boolean().optional().describe('Also soft-delete every active descendant. Without it, a node with active children is rejected.'),
         hard: z.boolean().optional().describe('Permanently delete (incl. descendants via FK cascade) instead of soft-delete. Only honored while the ground is transplanting; irreversible — use for import cleanup.'),
       }),
     },
-    async ({ slug, id, hard }) => {
+    async ({ slug, id, cascade, hard }) => {
       try {
         const graph = await api.get(`/api/projects/${encodeURIComponent(slug)}/graph`);
         const target = (graph.nodes || []).find(n => n.id === id);
@@ -792,13 +801,15 @@ export function registerTools(server, { api }) {
 
         const transplanting = graph.project?.transplanting === true;
 
-        // 옮겨심는 중이면 cascade 허용(가드 해제). 평상시엔 활성 자손 있으면 거부.
-        if (!transplanting) {
+        // 평상시엔 활성 자손이 있으면 거부한다 — 삭제된 노드는 되살릴 경로가 없어서, 가지 하나를 지우려다
+        // 서브트리가 통째로 사라지는 걸 막는다. cascade=true로 의도를 밝히면 서버의 cascade를 그대로 탄다.
+        // 옮겨심는 중이면 가드 해제.
+        if (!transplanting && cascade !== true) {
           const children = (graph.nodes || []).filter(n => n.parent === id && !n.removedAt);
           if (children.length > 0) {
             const list = children.slice(0, 5).map(c => `${c.id}("${c.label}")`).join(', ');
             const more = children.length > 5 ? ` (+${children.length - 5} more)` : '';
-            throw new Error(`Node has ${children.length} active child node(s). Delete them first. Children: ${list}${more}`);
+            throw new Error(`Node has ${children.length} active child node(s). Delete them first, or pass cascade=true to delete the whole subtree. Children: ${list}${more}`);
           }
         }
 
@@ -1156,19 +1167,21 @@ export function registerTools(server, { api }) {
     'list_wiki',
     {
       title: 'List wiki pages of a ground',
-      description: 'Lists the ground\'s wiki — the prose the tree cannot hold: conventions, decisions and why they were made, glossary, onboarding. Reference entries describing how things work, not a log of what happened: the change record is list_events, the page\'s own past is in its revisions. Not the structure itself (get_graph) and not defects (list_bugs). Bodies come back as 200-char excerpts by default so a scan stays cheap; pass body="full" only when you mean to read them, or body="none" for a pure index. A page may hang off a node (nodeId) or float free — pass node=<id> for one node\'s pages, or node="none" for the pages not yet attached to anything, which is the list worth reviewing when the tree has grown.',
+      description: 'Lists the ground\'s wiki — the prose the tree cannot hold: conventions, decisions and why they were made, glossary, onboarding. Reference entries describing how things work, not a log of what happened: the change record is list_events, the page\'s own past is in its revisions. Not the structure itself (get_graph) and not defects (list_bugs). Bodies come back as 200-char excerpts by default so a scan stays cheap; pass body="full" only when you mean to read them, or body="none" for a pure index. A page may hang off a node (nodeId) or float free — pass node=<id> for one node\'s pages, or node="none" for the pages not yet attached to anything, which is the list worth reviewing when the tree has grown. The wiki is a tree: each page has a parent page and a position among its siblings, starting from an overview page. order="tree" returns the whole table of contents in reading order (depth-first, with depth) — use it to read the wiki front to back or to see where a new page belongs. Every page also has a kind (overview / concept / component / rule / glossary); kind="none" lists the pages not yet classified.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         node: z.string().optional().describe('Node id to filter by, or "none" for pages attached to nothing yet. Omit for all.'),
+        kind: z.enum(['overview', 'concept', 'component', 'rule', 'glossary', 'none']).optional().describe('Only pages of this kind, or "none" for unclassified pages. Omit for all.'),
         body: z.enum(['none', 'excerpt', 'full']).optional().describe('How much body text per page. Default "excerpt" (200 chars).'),
         limit: z.coerce.number().int().positive().optional(),
-        order: z.enum(['asc', 'desc']).optional().describe('By last update. Default "desc" (most recently touched first).'),
+        order: z.enum(['asc', 'desc', 'tree']).optional().describe('"desc" (default) / "asc" by last update, or "tree" for the table of contents in reading order.'),
       }),
     },
-    async ({ slug, node, body, limit, order }) => {
+    async ({ slug, node, kind, body, limit, order }) => {
       try {
         const qs = [];
         if (node) qs.push(`node=${encodeURIComponent(node)}`);
+        if (kind) qs.push(`kind=${kind}`);
         if (body) qs.push(`body=${body}`);
         if (limit) qs.push(`limit=${limit}`);
         if (order) qs.push(`order=${order}`);
@@ -1230,6 +1243,7 @@ export function registerTools(server, { api }) {
       title: 'Create or update a wiki page',
       description: [
         'Writes one wiki page. Creates it if the page slug is new, updates it otherwise — you do not need to check first.',
+        '**The wiki is the project\'s encyclopedia: one page is one entry, and its body is the current spec and rules of that thing.** It is a tree read front to back: an overview page at the top, chapter pages under it, entries under those — place every page with parent (a page slug or id) and position (its order among siblings), and check list_wiki order="tree" to see where it belongs. For a new wiki, follow the table of contents in umtri://templates/wiki. The title is a plain noun for the thing in the reader\'s language (조직, 배포, Billing) — no dash, colon, parenthetical or sentence; the description goes in the lead. Give every page a kind — overview (the top page and chapter pages that introduce what is under them), concept (a product/domain concept or model), component (how one part of the system works), rule (a convention that must be kept), glossary (the project\'s vocabulary). Write it to this skeleton: a lead paragraph first (1–3 sentences saying what the thing is — not a heading, quote or list), then "## 스펙" / "## Spec" (how it works now; break it down with ###), then "## 규칙" / "## Rules" (invariants, prohibitions, required order). concept and component need Spec; rule needs Rules; overview and glossary are free-form after the lead. No other top-level (##) sections. Background, history, rejected alternatives and side notes go into footnotes — [^name] in the text, [^name]: … at the end — not into the body. A reason stays in the body only if someone changing the code would get it wrong without it.',
         'Write what the tree cannot hold and what a maintainer would otherwise have to reconstruct: why a decision went the way it did, the vocabulary this project uses, what an investigation concluded. Do not restate the structure — that is what nodes are for.',
         '**A page is a description, not a log.** Write it in the present tense, as a reference entry for the thing: how it works now, and the reasons that still constrain it. Do not append what you just did, do not add dated entries or a change-history section, do not keep progress checklists here — those go to bugs, plan nodes, list_events, and record_commit, and the page\'s own past is already kept in its revisions. When something changes, rewrite the sentence that is now wrong rather than adding a sentence saying it changed.',
         'mode="replace" (default) overwrites the whole body — read the page first, or you will drop what was there; this is the normal way to update a page. mode="append" is the narrow case: adding a section the page genuinely lacked, never tacking on this session\'s summary. mode="restore" puts an earlier revision back: pass rev=<n> and nothing else, and the page returns to what it said then.',
@@ -1239,6 +1253,7 @@ export function registerTools(server, { api }) {
         'rename moves the page to a new slug, keeping its id and its whole revision history — do not create a new page and delete the old one, that throws the history away.',
         'The response tells you what the write did: rev is the revision it landed in, coalesced says whether it folded into your previous one, and previousBodyChars is how long the body was before you wrote. If previousBodyChars is much larger than what you just wrote, you replaced someone\'s work — check list_wiki_revisions before moving on.',
         'baseRev is optional and is how you avoid clobbering a concurrent edit: pass the rev you read, and the write is refused if the page moved on since. Use it when you read, think, then write.',
+        'The response carries warnings[] when the page strays from the skeleton or reads like a log (status banners, dated headings, checklists, change-history sections, unmatched footnotes). The write is saved either way — fix what they point at and write again.',
         'The change also lands in the ground\'s history (list_events, entityType="wiki"), where the body is recorded as a length delta rather than a copy of the prose — the prose itself lives in the revisions.',
         'Requires a write-scope token.',
       ].join(' '),
@@ -1248,6 +1263,9 @@ export function registerTools(server, { api }) {
         title: z.string().min(1).max(200).optional().describe('Display title. Required when creating a page.'),
         body: z.string().optional().describe('Markdown body. With mode="append" this is the text to add. Ignored by mode="restore".'),
         node: z.string().nullable().optional().describe('Node id to attach to. null detaches. Omit to leave the current attachment untouched.'),
+        kind: z.enum(['overview', 'concept', 'component', 'rule', 'glossary']).nullable().optional().describe('Page kind — decides the required sections. Give it when creating. Omit to keep the current kind.'),
+        parent: z.string().nullable().optional().describe('Parent page (slug or id) — where this page sits in the table of contents. null moves it to the top level (only overview pages belong there). Omit to keep it.'),
+        position: z.coerce.number().int().nullable().optional().describe('Order among siblings under the same parent (ascending; pages without one come after, by title). Omit to keep it.'),
         mode: z.enum(['replace', 'append', 'restore']).optional().describe('"replace" (default) overwrites the body — the normal way to update a page; "append" adds a missing section to the end (not a session summary); "restore" brings back the revision named by rev.'),
         rev: z.coerce.number().int().positive().optional().describe('With mode="restore": the revision number to bring back (from list_wiki_revisions).'),
         baseRev: z.coerce.number().int().positive().optional().describe('The revision you based this write on. If the page has moved past it, the write is refused instead of overwriting.'),
@@ -1260,22 +1278,24 @@ export function registerTools(server, { api }) {
         rename: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).optional().describe('New page slug. Keeps the id and the revision history; refused if that name is taken.'),
       }),
     },
-    async ({ slug, page, title, body, node, mode, rev, baseRev, newRevision, rename }) => {
+    async ({ slug, page, title, body, node, kind, parent, position, mode, rev, baseRev, newRevision, rename }) => {
       try {
         const payload = { slug: page };
         if (title !== undefined) payload.title = title;
         if (body !== undefined) payload.body = body;
         if (node !== undefined) payload.node = node;
+        if (kind !== undefined) payload.kind = kind;
+        if (parent !== undefined) payload.parent = parent;
+        if (position !== undefined) payload.position = position;
         if (mode !== undefined) payload.mode = mode;
         if (rev !== undefined) payload.rev = rev;
         if (baseRev !== undefined) payload.baseRev = baseRev;
         if (newRevision !== undefined) payload.newRevision = newRevision;
         if (rename !== undefined) payload.rename = rename;
         const written = await api.put(`/api/projects/${encodeURIComponent(slug)}/wiki`, payload);
-        // 로그 형태 경고는 쓰기를 막지 않는다 — 이미 저장된 뒤에 붙인다. 판정이 휴리스틱이라
-        // 거부하면 정당한 문서까지 막히고, 어차피 리비전이 있어 되돌릴 수 있다.
-        // 검사 대상은 저장된 본문이다: append면 이어붙인 결과 전체를 봐야 한다.
-        const warnings = wikiLogShapeCheck(written?.body)
+        // 본문 판정(뼈대·로그 형태)은 서버가 저장된 본문에 걸어 warnings로 돌려준다.
+        // 여기선 도구 호출 마크업 유출만 더한다 — 그건 MCP 인자 직렬화 사고라 이 층의 일이다.
+        const warnings = (written?.warnings ?? [])
           .concat(toolMarkupCheck({ title, body: written?.body }));
         return jsonResult(warnings.length ? { ...written, warnings } : written);
       } catch (e) { return errorResult(e); }

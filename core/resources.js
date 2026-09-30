@@ -55,7 +55,14 @@ const RESOURCES = [
     uri: 'umtri://rules/wiki',
     file: 'wiki.md',
     title: 'How to write a ground\'s wiki',
-    description: 'A wiki page is named after a thing, and its revisions are that thing\'s life: rev 1 is the plan, later revisions are what it became, the newest is what is true now. Covers naming (the subject, never "prd-x"), writing the plan first, marking the plan→built boundary with newRevision, what stays on the page versus what becomes history (a live reason is current spec, not history), when to split pages, replace/append/restore/baseRev, attaching to nodes, and why deleting is almost never right. Read before writing or reorganizing wiki pages.',
+    description: 'The wiki is the project\'s encyclopedia, read front to back as a tree: overview → chapters → entries. Covers the tree (parent/position), noun titles, kinds and their skeleton (lead → Spec → Rules → footnotes), background in footnotes, why a page is a description and not a log, naming, revisions (plan first, newRevision at the plan→built boundary), and why deleting is almost never right. Read before writing or reorganizing wiki pages.',
+  },
+  {
+    name: 'wiki-templates',
+    uri: 'umtri://templates/wiki',
+    file: 'wiki-templates.md',
+    title: 'Wiki tables of contents by project type',
+    description: 'Recommended wiki trees for a web service, an app service and a library — page, Korean title, kind, and what each holds. Read when starting a ground\'s wiki or when its table of contents has no clear shape.',
   },
   {
     name: 'system-structure',

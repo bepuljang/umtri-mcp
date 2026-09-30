@@ -232,52 +232,9 @@ export function reparentMetadataHint(patch) {
 }
 
 // ── wiki 본문 ────────────────────────────────────────────────────────
-// 위키를 로그로 쓰는 경향이 실제로 관찰됐다 — 작업을 끝낸 에이전트가 페이지를 열어
-// "이번에 뭘 했는지"를 덧붙이고, 몇 번 반복되면 페이지가 세션 요약 더미가 된다.
-// 규칙 문서(umtri://rules/wiki)에 적어뒀지만 리소스는 pull-only라 안 읽으면 그만이라,
-// 쓰는 순간에 신호를 준다.
-//
-// **거부하지 않고 경고만 한다.** 판정이 휴리스틱이고, 날짜가 정당하게 필요한 문서도
-// 있기 때문이다(마이그레이션 위험 고지 등). 오탐이 잦으면 경고 자체가 무시되므로
-// 정밀도가 높은 신호만 고른다 — 셋 다 산문형 레퍼런스에는 거의 나오지 않는 형태다.
-// 날짜가 제목 **앞머리**에 올 때만 잡는다. "## 2026-08-27 — 인증 분리"는 일지 항목이지만
-// "## 확정된 결정 (2026-07-28)"은 결정에 날짜를 단 것이라 정당하다. 괄호 안 날짜까지
-// 잡으면 오탐이 늘고, 오탐이 늘면 경고를 아무도 안 본다.
-const WIKI_DATE_HEADING_RE = /^#{1,6}\s*[([]?\s*20\d{2}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*\d{1,2}/m;
-const WIKI_CHANGELOG_HEADING_RE = /^#{1,6}\s*(?:.*(?:change\s*(?:log|history)|revision history|release notes|변경\s*(?:이력|내역)|작업\s*이력|업데이트\s*내역|진행\s*(?:표시|상황)).*)$/im;
-const WIKI_CHECKBOX_RE = /^\s*[-*+]\s*\[[ xX]\]/gm;
-
-export function wikiLogShapeCheck(body) {
-  if (!body || typeof body !== 'string') return [];
-  const out = [];
-
-  if (WIKI_DATE_HEADING_RE.test(body)) {
-    out.push({
-      rule: 'wiki-dated-entry',
-      severity: 'warn',
-      message: 'This body has a date heading. A wiki page is a description of how something works now, not a dated log — the page\'s own past is kept in its revisions (list_wiki_revisions) and who-changed-what in list_events. Fold the fact into the prose and drop the date, unless the date is itself a live hazard a reader must know.',
-    });
-  }
-
-  if (WIKI_CHANGELOG_HEADING_RE.test(body)) {
-    out.push({
-      rule: 'wiki-changelog-section',
-      severity: 'warn',
-      message: 'This body has a change-history / progress section. Revisions already record what the page said before, so that section duplicates them and goes stale. Delete it and let the prose describe the current state.',
-    });
-  }
-
-  const boxes = body.match(WIKI_CHECKBOX_RE);
-  if (boxes && boxes.length >= 3) {
-    out.push({
-      rule: 'wiki-progress-checklist',
-      severity: 'info',
-      message: `This body has ${boxes.length} checklist items. Outstanding work belongs in bugs (create_bug) or plan nodes, where it can be tracked and closed — a checklist in a wiki page is read by nobody and rots. Keep the page to what is true now.`,
-    });
-  }
-
-  return out;
-}
+// 위키 판정(로그 형태 + 백과사전 뼈대)은 서버 server/data/wikiLint.js에 있고 쓰기 응답의
+// warnings[]로 온다. 여기 두면 REST로 쓴 문서는 판정을 안 받고, stdio 사용자는 패키지를
+// 새로 받을 때까지 옛 판정에 묶인다.
 
 // ── 도구 호출 마크업 유출 ────────────────────────────────────────────
 // 인자가 필드로 쪼개지지 못하고 첫 필드에 통째로 들어오는 사고가 실제로 있었다

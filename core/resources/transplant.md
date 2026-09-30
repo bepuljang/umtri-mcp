@@ -55,8 +55,9 @@ remove it.
 
 All normal guards return: past seasons reject new/moved nodes, grown nodes lock
 their shape and timeline, `delete_node` is soft-only and refuses nodes with
-active children. Treat the tree as settled — small, observable changes only
-(see umtri://about/vision).
+active children unless you pass `cascade: true` (only when the human asked to
+remove the whole branch — soft-deleted nodes cannot be restored). Treat the
+tree as settled — small, observable changes only (see umtri://about/vision).
 
 ### What stays editable on a grown node
 

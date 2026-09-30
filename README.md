@@ -56,26 +56,34 @@ appear and then error, re-check the token and its scope — `read` tokens cannot
 **Read** — `get_graph`, `get_bug`, `get_impact`, `list_projects`, `list_bugs`, `list_seasons`,
 `list_events`
 
-**Write** — `create_project`, `create_node`, `update_node`, `delete_node`, `create_edge`,
-`delete_edge`, `create_api`, `update_api`, `delete_api`, `create_bug`, `update_bug`, `delete_bug`,
-`create_season` (acts only after the user confirms)
+**Write** — `create_project`, `create_node`, `update_node`, `delete_node` (a subtree only with
+`cascade: true`), `create_edge`, `delete_edge`, `create_api`, `update_api`, `delete_api`,
+`create_bug`, `update_bug`, `delete_bug`, `create_season` (acts only after the user confirms)
 
 **Plan loop** — `commit_plan`, `record_commit`
+
+**Wiki** — `list_wiki`, `get_wiki`, `list_wiki_revisions`, `write_wiki`, `delete_wiki`. The ground's
+encyclopedia: pages form a table of contents (`parent`, `position`) read from an overview down,
+each has a kind, and every write comes back with warnings when a page strays from the skeleton.
+
+**Feedback** — `send_feedback` files a suggestion or defect about Umtri itself.
 
 `get_graph` returns a slice, not a dump: scope by subtree (`rootId`), by layer (`maxType`), by role,
 or by season, and control description weight separately. A large tree stays cheap to read.
 
 ## Resources
 
-Seven read-only documents the agent can pull for domain rules — the plant vocabulary
+Ten read-only documents the agent can pull for domain rules — the plant vocabulary
 (trunk/limb/twig/leaf/vein), what counts as a node and what does not, how seasons work, how plan
-nodes are meant to be realized, and how a ground behaves while transplanting.
+nodes are meant to be realized, how a ground behaves while transplanting, keeping the tree in step
+with commits, and how to write and organize the wiki.
 
 ```
-umtri://rules/vocabulary            umtri://rules/transplant
-umtri://rules/vocabulary-detailed   umtri://rules/plan
-umtri://rules/seasons               umtri://about/vision
-umtri://rules/system-structure
+umtri://rules/vocabulary            umtri://rules/plan
+umtri://rules/vocabulary-detailed   umtri://rules/commit-sync
+umtri://rules/system-structure      umtri://rules/wiki
+umtri://rules/seasons               umtri://templates/wiki
+umtri://rules/transplant            umtri://about/vision
 ```
 
 ## Links

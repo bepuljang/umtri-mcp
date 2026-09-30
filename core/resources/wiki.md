@@ -1,22 +1,127 @@
 # Writing a Ground's Wiki
 
-The tree holds structure. The wiki holds what the tree cannot: the conventions a
-project settled on, the decisions it made and why, the vocabulary it uses, what
-an investigation concluded.
+The tree holds structure. The wiki is **the project's encyclopedia**: it holds
+what the tree cannot — how each part works, the rules the project keeps, the
+concepts it is built on, the words it uses.
 
-Two things to remember. The first is the shape of a page:
+Four things to remember.
 
-> **A page is named after a thing, and its revisions are that thing's life.**
-> Revision 1 is the plan. Later revisions are what it became. The newest
-> revision is what is true now.
+> **The wiki is read front to back.** It is a tree — an overview at the top,
+> chapters under it, entries under those. Someone who reads it in order should
+> come out understanding the project.
 
-The second is what a page *is*:
+> **One page is one entry.** It is named after a thing, and its body is that
+> thing's current spec and rules.
 
-> **A page is a description, not a log.**
-> It tells a reader how something works right now. It does not narrate what
-> happened to it.
+> **Background goes in footnotes.** How it came to be, what was tried before,
+> side notes — `[^name]`, not body text.
 
-Everything below follows from those two.
+> **Revisions are the page's life.** Revision 1 is the plan, later revisions
+> are what it became, the newest is what is true now. The body never narrates
+> that history.
+
+## The table of contents
+
+Every page has a place in the tree: a `parent` page and a `position` among its
+siblings. The app draws the table of contents from it, numbers the entries, and
+links each page to the previous and next one in reading order.
+`list_wiki` with `order="tree"` returns the same order.
+
+- **One overview at the top.** It says what the project is, who it is for, the
+  stack at a glance, and how the wiki is laid out. Only `overview` pages stand
+  at the top level; any other page without a parent is flagged.
+- **Chapters under it** — usually Concepts, Architecture, Operations, Glossary.
+  A chapter page is an `overview` too: a lead and one sentence per page under it.
+- **Entries under the chapters**, nested where one thing is part of another
+  (Authentication under Server, Write policy under MCP).
+- **Order teaches.** Put what a newcomer needs first before what depends on it:
+  the core concept before its details, the server before its domains.
+
+Starting a wiki, or reorganizing one with no clear shape: read
+`umtri://templates/wiki` and pick the table of contents for the project type.
+Grow into it — create a page when there is something true to put in it, not as
+an empty placeholder.
+
+## Titles
+
+A title is **a plain noun for the thing, in the reader's language**: `조직`,
+`배포`, `영향 분석` for a Korean-speaking team; `Organizations`, `Deployment`,
+`Impact analysis` for an English one. Product vocabulary and proper names stay
+as they are (`MCP`, `Season`).
+
+The table of contents is made of titles; it only reads as a structure when each
+line is a name. So no description after a dash or colon, no parenthetical, no
+sentence. "Organizations — tenancy, teams and who pays" belongs in the lead,
+not the title. The write warns about titles that look like that.
+
+## Kinds
+
+Every page has a `kind`. It decides which sections the page needs.
+
+| kind | For | Needs |
+| --- | --- | --- |
+| `overview` | The top page and chapter pages — what is under them and why in that order | a lead only |
+| `concept` | A product or domain concept, a model (node roles, the plan loop) | `## Spec` |
+| `component` | How one part of the system works (MCP, organizations, billing) | `## Spec` |
+| `rule` | A convention that must be kept (commit sync, deploy order) | `## Rules` |
+| `glossary` | The project's vocabulary | nothing — a table or list |
+
+Pick by what a reader arrives asking. "What is X?" is a concept. "How does X
+work / how do I change it?" is a component. "What must I always / never do?" is
+a rule. If a page answers two of these, it is probably two pages — or one
+component page with a strong Rules section.
+
+## The skeleton
+
+```
+Lead paragraph — what this is, in 1–3 sentences.
+
+## 스펙 (Spec)
+How it works now. Break it down with ### headings.
+
+## 규칙 (Rules)
+What you get wrong if you don't know it: invariants, prohibitions, required order.
+
+[^name]: Background, history, rejected alternatives, side notes.
+```
+
+- **The lead comes first**, as a paragraph. Not a heading, not a `> Status:`
+  banner, not a list. A reader who stops after it should know what the thing is.
+- **Only two top-level sections**: `## 스펙` / `## Spec` and `## 규칙` /
+  `## Rules`. Everything else is a `###` under one of them. (`overview` and
+  `glossary` pages are free-form after the lead.)
+- **Spec** is descriptive: how it works. **Rules** is normative: what must hold.
+  "Tokens are hashed with SHA-256" is spec. "Never log a raw token" is a rule.
+- Write the body in the language the project uses; the section names are
+  recognised in Korean and English.
+
+## Footnotes: where background lives
+
+An encyclopedia entry is not stripped of reasons — but it is careful about
+*which* reasons sit in the text.
+
+**The test: would someone about to change this code get it wrong without
+knowing this?**
+
+- **Yes** → it is part of the spec or a rule. Keep it in the body. "The webhook
+  handler retries three times, because Toss redelivers on any non-2xx" — the
+  "because" stops someone from removing the retry.
+- **No** → it is background. Put it in a footnote. How the decision was
+  reached, the approach that came before, who asked for it, a caveat worth
+  knowing but not acting on.
+
+```
+Team orgs keep `plan='free'`.[^plan]
+
+[^plan]: `plan` describes the org's own subscription. An earlier draft billed
+teams through the owner's personal plan; that was dropped when billing moved to
+the team itself.
+```
+
+Footnote syntax is `[^name]` in the text and `[^name]: …` on its own line,
+usually at the end. The app renders references as superscripts and collects the
+definitions into a notes list at the bottom. Every reference needs a
+definition, and every definition needs a reference.
 
 ## Write reference, not a diary
 
@@ -25,26 +130,19 @@ the page, and appends a paragraph about what it just did. Do that a few times
 and the page is a pile of session summaries that nobody can read as an
 explanation of anything.
 
-**The page should read like an encyclopedia entry for the thing, in the present
-tense.** Someone who arrives knowing nothing should finish it understanding how
-the thing works. They should not have to reconstruct the current state by
-replaying a timeline.
-
-| Log — do not write this | Description — write this |
+| Log — do not write this | Entry — write this |
 | --- | --- |
-| "Added retry logic to the webhook handler today." | "The webhook handler retries three times with backoff. Toss redelivers on any non-2xx, so a slow database would otherwise double-charge." |
-| "## 2026-08-27 — split the auth middleware" | "Auth runs in two stages: session or bearer resolution, then scope check. They are separate because MCP loopback needs the second without the first." |
-| "Phase 1 done, Phase 2 in progress" | (belongs in bugs or plan nodes, not here) |
+| "Added retry logic to the webhook handler today." | "The webhook handler retries three times with backoff." (+ the reason, in the body or a footnote) |
+| "## 2026-08-27 — split the auth middleware" | "Auth runs in two stages: session or bearer resolution, then scope check." |
+| "> Status: Phase 1–3 implemented" | (nothing — progress lives in bugs and plan nodes) |
+| "Decision ⑦: tokens capped at 3" | A rule: "A user holds at most 3 active write tokens." |
 | "## Change history" / "## 변경 이력" | (delete it — that is what revisions are for) |
 
-Concretely, a page should not contain:
-
-- **Date headings** or dated entries of any kind
-- **Progress checklists** — "Phase 2 완료", "- [x] W3", "TODO: …"
-- **Sentences about the act of working** — "we added", "이번에 …했다", "next I will"
-- **A changelog section**
-
-### Why this is not a loss
+A page does not contain dated headings, status or source banners, progress
+checklists, sentences about the act of working ("we added", "이번에 …했다"),
+or a changelog section. A numbered decision log is the same mistake in a
+different shape: turn each live decision into a spec sentence or a rule, and
+move how it was decided into a footnote.
 
 The temporal record already exists, in better places:
 
@@ -53,158 +151,103 @@ The temporal record already exists, in better places:
 | What this page said before | revisions (`list_wiki_revisions`) |
 | Who changed what, when | the ground's history (`list_events`) |
 | Which commit touched which code | `record_commit` → the node's `metadata.commits` |
-| What still needs doing | bugs (`create_bug`) or plan nodes |
+| What still needs doing, what is undecided | bugs (`create_bug`) or plan nodes |
 | What you plan to do | revision 1 of the page, written *before* you build |
 
-**Because the history lives in the revisions, the body is free to be purely
-present-tense.** That is the whole point of versioning the page: you never have
-to keep an old paragraph around just to preserve the record of it. Rewrite the
-sentence to say what is true now, and the previous wording stays readable in the
-revision underneath.
+Past events belong in the body only when the event is *itself* a live
+constraint: "the `apex` type was renamed to `leaf`; old exports may still carry
+it." That is not a diary entry, it is a hazard.
 
-A page that logs is doing, badly, a job four other things already do well — and
-failing at the one job only it can do.
+## The write tells you what is off
 
-### The exception: what "why" survives
-
-Present tense does not mean stripping the reasoning. "The webhook handler
-retries because Toss redelivers on any non-2xx" is present tense and is exactly
-the sentence worth keeping. The test is not *is this about the past* but **would
-someone changing this code get it wrong without knowing it** — see "What stays
-on the page" below.
-
-Past events belong in a page only when the event is *itself* a live constraint:
-"the `apex` type was renamed to `leaf` in 2026-05; old exports may still carry
-it." That is not a diary entry, it is a hazard a reader needs.
+`write_wiki` answers with `warnings[]` when the saved page strays from the
+skeleton: no kind, no parent (outside the table of contents), a title that is
+not a plain noun, no lead, a status banner, a dated heading, a checklist, a
+change-history section, a top-level section other than Spec/Rules, a missing
+required section, or a footnote without its pair. The write is saved either
+way. Read the warnings, fix the page, write again.
 
 ## Name the thing, not the document
 
-A page is called `mcp`, `billing`, `impact-analysis` — the subject it is about.
+The page slug (its URL name) is called `mcp`, `billing`, `impact-analysis` —
+the subject it is about, in lowercase English even when the title is Korean.
 
 Never name a page after what it currently *is*: `prd-mcp`, `mcp-spec`,
-`mcp-notes-v2`, `mcp-final`. Those names are accurate for a week. The page that
-begins life as a plan for MCP and ends as the description of the MCP you built
-is the same page the whole time, and `prd-mcp` becomes a lie the moment the
-first line of it ships.
+`mcp-notes-v2`, `mcp-final`. The page that begins as a plan for MCP and ends as
+the description of the MCP you built is the same page the whole time.
 
 Use lowercase letters, digits and hyphens. Say what a maintainer would say out
 loud: `deploy`, not `deployment-process-documentation`.
 
 If a name turns out wrong, use `write_wiki`'s **`rename`**. Do not create a new
-page and delete the old one — that throws away every revision, which is the part
-of the page that was worth keeping. A rename on its own adds no revision; a
-revision records content, and the name is not content.
+page and delete the old one — that throws away every revision.
 
 ## Revision 1 is the plan
 
-Before building something, write the page. What you are about to do, why this
-way, what you decided against. That is revision 1, and it is a real deliverable:
-another agent picking up the work reads it instead of guessing.
+Before building something, write the page: what you are about to do, why this
+way, what you decided against. That is revision 1, and another agent picking up
+the work reads it instead of guessing. A plan is the one revision allowed to be
+in the future tense.
 
 This replaces keeping design docs in the repo. A plan in a repo file goes stale
-silently — nothing makes anyone revisit it, and six months later no one can tell
-whether it describes the code or someone's old intention. A plan that is
-revision 1 of a living page cannot rot the same way, because the page keeps
-being updated and the plan stays readable underneath as history.
+silently; a plan that is revision 1 of a living page stays readable underneath
+as history.
 
-Plan nodes and this page do different jobs and work together: the plan nodes say
-*where* in the structure something goes, the page says *what and why*. See
+Plan nodes and the page work together: the plan nodes say *where* in the
+structure something goes, the page says *what and why*. See
 `umtri://rules/plan`.
 
-## Write back what you actually built — with `newRevision: true`
+## Write back what you built — with `newRevision: true`
 
-When the thing exists, come back and make the page describe it. Not "the plan
-plus a note that it's done" — the page should now read as a description of what
-is there.
+When the thing exists, rewrite the page so it describes it. Not "the plan plus
+a note that it's done" — an entry for what is there.
 
-**Pass `newRevision: true` on that write.** This matters more than it looks.
-Writes fold together when they come from the same author within about half an
-hour, so that eight passes of polishing leave one revision instead of eight.
-That folding cannot tell "still drafting the plan" from "the plan has become the
-thing" — clock and author look identical in both cases. Without the flag, an
-agent that plans and then builds in one sitting overwrites its own plan, and
-revision 1 is gone.
+**Pass `newRevision: true` on that write.** Writes by the same author within
+about half an hour fold into one revision. That folding cannot tell "still
+drafting the plan" from "the plan has become the thing"; without the flag, an
+agent that plans and builds in one sitting overwrites its own plan.
 
-Use it whenever the page crosses a boundary: plan → built, v1 → v2, one approach
-abandoned for another. Skip it while you are still working on the same stage.
-
-## What stays on the page, what becomes history
-
-The page is the current state. But "current state" is not just the mechanics —
-**a live reason is part of the current spec.**
-
-| Stays on the page | Becomes history |
-| --- | --- |
-| How it works now | How it used to work |
-| The constraint that makes it work this way | A constraint that no longer applies |
-| A decision you would repeat, and why | The full argument that led to a reversed decision |
-| The conclusion of a reversal: "we tried A, moved to B, because —" | The prose written while A was still true |
-
-The test: **would someone about to change this code get it wrong without
-knowing this?** If yes, it belongs on the page, however old it is.
-
-A rule like "team org keeps `plan='free'` because plan describes that org's own
-subscription and a team org has none" is not history. It is a live trap, and a
-page that files it away as an old decision will get rewritten wrong.
-
-A page that strips out every reason becomes a manual, and a manual is exactly
-the thing the tree could have held. Do not optimize the wiki into uselessness.
+Use it whenever the page crosses a boundary: plan → built, v1 → v2, one
+approach abandoned for another.
 
 ## One page per thing
 
 Split when a page starts answering two questions a reader would arrive with
-separately. Merge — or never split — when the answer to one requires the other.
-
-Do not split by document type. `mcp` and `mcp-architecture` are not two pages;
-they are one page at two points in its life. Do not create a page per file, per
-sprint, or per meeting. A ground with forty one-paragraph pages is harder to
-read than the code.
+separately. Do not split by document type — `mcp` and `mcp-architecture` are
+one page at two points in its life. Do not create a page per file, per sprint,
+or per meeting.
 
 ## Choosing how to write
 
 | | |
 | --- | --- |
 | The thing changed | `mode="replace"` — **read the page first** (`get_wiki`) |
-| The page is missing a whole topic you can add as its own section | `mode="append"` |
+| The page lacks a whole topic you can add as its own `###` | `mode="replace"` with it folded in; `append` only if it truly stands alone at the end |
 | Crossing into a new stage | add `newRevision: true` |
 | A write went wrong | `list_wiki_revisions`, then `mode="restore"` with the rev |
-| You read, thought, then wrote, and someone else may have written meanwhile | add `baseRev` — the write is refused instead of clobbering |
+| Someone else may have written meanwhile | add `baseRev` — the write is refused instead of clobbering |
 
-**`append` is the narrow case, not the default.** It is for adding a section
-that was genuinely absent — a new subsystem the page never covered. It is not
-for tacking on what you just did. If your addition would only make sense to
-someone who knows what happened this week, you want `replace`: fold the new fact
-into the sentence that was already there.
-
-After any write, look at what came back. `previousBodyChars` is how long the
-body was before you wrote. If it is much larger than what you just wrote, you
-replaced someone's work — check `list_wiki_revisions` before moving on. Nothing
-is lost, but nobody will tell you later.
+After any write, check `previousBodyChars`. If it is much larger than what you
+just wrote, you replaced someone's work — look at `list_wiki_revisions`.
 
 ## Attaching to nodes
 
-A page can hang off a node or float free. Floating is normal and expected early:
-knowledge arrives before structure, and a page that has to wait for a node is a
-page that never gets written.
-
-Once the tree has grown, list the unattached pages (`list_wiki` with
-`node="none"`) and attach the ones that now have a home. Deleting a node
-detaches its pages rather than deleting them.
+A page can hang off a node or float free. Floating is normal early: knowledge
+arrives before structure. Once the tree has grown, list the unattached pages
+(`list_wiki` with `node="none"`) and attach the ones that now have a home.
+`list_wiki` with `kind="none"` lists the pages not yet classified.
 
 ## Deleting
 
-Almost never. Deleting removes the page **and its entire revision history** —
-unlike an overwrite, it cannot be undone.
-
-A stale page is not a reason to delete. Rewrite it, and let the old state live
-in its revisions. Delete only a page that should never have existed: a
-duplicate, a test, something filed under the wrong ground.
+Almost never. Deleting removes the page **and its entire revision history**.
+A stale page is not a reason to delete — rewrite it. Delete only a page that
+should never have existed: a duplicate, a test, something filed under the wrong
+ground.
 
 ## What does not belong here
 
-- **Structure** — that is what nodes are for. Do not maintain a prose copy of
-  the tree; it will drift within a week.
-- **Defects** — use bugs. A wiki page is not a to-do list.
-- **Requirements dumped in a ground's description** — that field is a one-line
-  summary, not a spec. Move it here.
-- **Secrets** — tokens, keys, passwords. The wiki is prose, not a vault.
+- **Structure** — that is what nodes are for. Do not keep a prose copy of the tree.
+- **Defects and open questions** — use bugs.
+- **Reports and archives** — an investigation's conclusion becomes spec or rules
+  on the page it is about; the report itself is not an entry.
+- **Secrets** — tokens, keys, passwords.
