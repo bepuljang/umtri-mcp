@@ -79,6 +79,10 @@ users* vs *read by us*.
 - `trunk` = a big domain (e.g. `www`, `server`, `db`). Pick stable,
   long-lived names — usually matching a top-level code area.
 - `limb` = a category inside a trunk (e.g. `graph`, `table`, `dashboard`).
+  How a trunk splits into limbs depends on its kind (`metadata.kind`): features
+  for a front, domains for a server and its database (same names, no suffix),
+  capabilities for a library, parts for a device — one common limb per trunk.
+  See `umtri://rules/trunk-kinds`.
 - Do **not** create one limb per time period. Time is expressed through
   `season` and `created_at`, not by carving the tree into temporal slices.
 - Infrastructure (servers, DNS) is *not* a trunk — it is the environment the
@@ -106,6 +110,8 @@ questions about a ground.
 | `role_change_at`     | type-changed nodes                  | `string` — ISO date                                |
 | `role_change_reason` | type-changed nodes                  | `string` — short prose explaining the shift        |
 | `placeholder`        | intentionally-empty structure       | `true` — opts out of dormant cleanup suggestions   |
+| `kind`               | trunks                              | `front` \| `server` \| `database` \| `library` \| `device` |
+| `common`             | the one shared limb of a trunk      | `true` — see `umtri://rules/trunk-kinds`           |
 
 ## One file, multiple nodes
 

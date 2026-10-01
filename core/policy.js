@@ -24,6 +24,26 @@ const VERB_ENDINGS = ['수정', '적용', '마이그레이션', '분리', '등�
 // Trunk naming pattern: <name>-app / <name>-server / single lowercase word (db, www).
 const TRUNK_PATTERN = /^[a-z][a-z0-9-]*(-app|-server|-service|-job|-cdn)$|^[a-z]{2,8}$/;
 
+// Trunk kinds — umtri://rules/trunk-kinds. Recorded in trunk metadata.kind.
+// A trunk that fits none of these keeps kind unset; the agent asks the human whether to
+// suggest a new kind via send_feedback (never files it on its own).
+export const TRUNK_KINDS = ['front', 'server', 'database', 'library', 'device'];
+
+// Suffixes that repeat what the trunk kind already says ("예약 API", "Reservation tables").
+// Matched at the end of a limb label directly under a trunk.
+const KIND_SUFFIX_PATTERN = /(\s|·)?(api|apis|응답|테이블|table|tables|관리|admin|management|endpoints?|엔드포인트)$/i;
+
+// Technical-layer limb names — how code is arranged, not what the system is made of.
+// Whole-label match (after trimming) so "상태 관리 화면" or "Store locator" don't trip it.
+const LAYER_LIMB_LABELS = [
+  'state', 'state management', 'store', 'stores', 'utils', 'util', 'utilities', 'helpers',
+  'hooks', 'routes', 'routing', 'router', 'middleware', 'middlewares', 'models',
+  'services', 'controllers', 'components', 'handlers', 'lib', 'core', 'http routes',
+  'data store', 'app bootstrap', 'bootstrap',
+  '상태 관리', '상태', '유틸', '유틸리티', '헬퍼', '훅', '라우트', '라우팅', '미들웨어',
+  '모델', '서비스', '컨트롤러', '컴포넌트', '핸들러',
+];
+
 // Promotion signals — when a twig's description contains these, it might belong at limb level.
 // Derived from sidebar/auth/ui-system limb promotions on 2026-05-21.
 const PROMOTION_KEYWORDS = [
@@ -98,6 +118,71 @@ export function trunkNamingCheck(type, label) {
     severity: 'info',
     message: `Trunk label "${label}" doesn't fit system-unit naming (e.g. user-app, api-server, db). Trunks should be deployable systems, not domains.`,
   };
+}
+
+// trunk에 kind가 없거나 다섯 유형 밖이면 알린다. 거부하지 않는다 — 기존 나무가 대부분 kind 없이 있다.
+export function trunkKindCheck(type, metadata) {
+  if (type !== 'trunk') return null;
+  const kind = metadata?.kind;
+  const fallback = 'If none of the five fits, leave kind unset, tell the human which trunk did not fit and why, and offer to suggest a new kind with send_feedback (kind "improvement") — do not file it on your own. See umtri://rules/trunk-kinds.';
+  if (kind == null || kind === '') {
+    return {
+      rule: 'trunk-kind-missing',
+      severity: 'info',
+      message: `Trunk has no metadata.kind. Set one of ${TRUNK_KINDS.join(' / ')} — the kind decides how its limbs split. ${fallback}`,
+    };
+  }
+  if (!TRUNK_KINDS.includes(kind)) {
+    return {
+      rule: 'trunk-kind-unknown',
+      severity: 'info',
+      message: `metadata.kind "${kind}" is not one of ${TRUNK_KINDS.join(' / ')}. ${fallback}`,
+    };
+  }
+  return null;
+}
+
+// trunk 바로 아래 limb의 이름 규칙 — 접미사 금지, 레이어 이름 금지, 공통 limb는 하나.
+// parentKind: 부모 trunk의 metadata.kind(없으면 null). siblingCommonCount: 같은 trunk 아래
+// 이 노드를 뺀 metadata.common=true limb 수.
+export function limbUnderTrunkChecks({ type, label, parentType, parentKind, metadata, siblingCommonCount = 0 }) {
+  const out = [];
+  if (type !== 'limb' || parentType !== 'trunk' || !label) return out;
+  const trimmed = label.trim();
+
+  const isLayer = LAYER_LIMB_LABELS.includes(trimmed.toLowerCase());
+  // 레이어 이름("상태 관리")은 접미사 문제가 아니라 축 문제라 layer 경고 하나만 낸다.
+  if (!isLayer && KIND_SUFFIX_PATTERN.test(trimmed) && trimmed.replace(KIND_SUFFIX_PATTERN, '').trim()) {
+    out.push({
+      rule: 'limb-domain-suffix',
+      severity: 'info',
+      message: `Limb "${label}" ends in a kind suffix. Name the domain alone ("${trimmed.replace(KIND_SUFFIX_PATTERN, '').trim()}") and reuse the exact label other trunks use for it — the trunk already says what kind of thing it is. See umtri://rules/trunk-kinds.`,
+    });
+  }
+
+  if (isLayer) {
+    const axis = {
+      front: 'user-facing features or flows (or pages for a public site)',
+      server: 'domains / resources',
+      database: 'domains, named like the server',
+      library: 'capabilities or concepts',
+      device: 'physical parts or screen regions',
+    }[parentKind] ?? "the trunk kind's axis (umtri://rules/trunk-kinds)";
+    out.push({
+      rule: 'limb-layer-axis',
+      severity: 'warn',
+      message: `Limb "${label}" names a technical layer. Split this trunk by ${axis}; put what this would hold into the feature/domain limb it serves, or into the trunk's one common limb.`,
+    });
+  }
+
+  if (metadata?.common === true && siblingCommonCount > 0) {
+    out.push({
+      rule: 'common-limb-duplicate',
+      severity: 'warn',
+      message: 'This trunk already has a common limb (metadata.common=true). Keep one per trunk — make this a twig of that limb, or a real feature/domain limb.',
+    });
+  }
+  return out;
 }
 
 export function leafVsVeinCheck(type, label) {
@@ -356,7 +441,7 @@ export function hierarchyCheck(parentType, childType) {
 // phase: 'create' enables dormancy hint (irrelevant on update where children may already exist).
 // siblingLeafCount: # of active leaf siblings already under the resolved parent (for parallel-leaves rule).
 // metadata: this node's metadata (for missing-implements rule).
-export function validateNode({ type, label, parentType, description, metadata, siblingLeafCount, siblingLeafLabels, phase = 'create' }) {
+export function validateNode({ type, label, parentType, parentKind = null, siblingCommonCount = 0, description, metadata, siblingLeafCount, siblingLeafLabels, phase = 'create' }) {
   const warnings = [];
   let rejectReason = null;
 
@@ -366,11 +451,25 @@ export function validateNode({ type, label, parentType, description, metadata, s
     else warnings.push(h);
   }
 
-  const r = reservedDomainCheck(label);
+  let r = reservedDomainCheck(label);
+  // 유형이 정해진 trunk 바로 아래 limb는 도메인 이름이다 — Umtri 자신의 server·db에는 "버그" 도메인이
+  // 있다. 그 코드 영역을 가리키는 거라면 정당하니 info로 낮추고 그 뜻을 말해 준다.
+  if (r?.rule === 'reserved-domain' && type === 'limb' && parentType === 'trunk' && TRUNK_KINDS.includes(parentKind)) {
+    r = {
+      rule: 'reserved-domain',
+      severity: 'info',
+      message: `"${label}" is also a first-class record (bugs/apis/seasons/edges). As a limb under a ${parentKind} trunk it is fine if it names the code that handles that domain — not individual records.`,
+    };
+  }
   if (r) warnings.push(r);
 
   const t = trunkNamingCheck(type, label);
   if (t) warnings.push(t);
+
+  const tk = trunkKindCheck(type, metadata);
+  if (tk) warnings.push(tk);
+
+  warnings.push(...limbUnderTrunkChecks({ type, label, parentType, parentKind, metadata, siblingCommonCount }));
 
   const l = leafVsVeinCheck(type, label);
   if (l) warnings.push(l);

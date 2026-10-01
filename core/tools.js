@@ -666,6 +666,7 @@ export function registerTools(server, { api }) {
         'parent ∈ existing node id; omit to create a root-level node.',
         'season ∈ existing season id; omit to use the active "now" season. Past seasons are normally rejected, but allowed while the ground is transplanting (project.transplanting=true) — nodes added then are auto-stamped metadata.transplanted=true for audit. See umtri://rules/transplant.',
         'The tool validates against protocol policies. Hierarchy violations are rejected. Soft issues (reserved-domain labels, leaf↔vein heuristic, trunk naming) come back as warnings in the response — reconsider before continuing if warnings appear.',
+        'A trunk carries metadata.kind ∈ front · server · database · library · device, and its limbs follow that kind\'s axis: same domain name across trunks with no suffix ("예약", not "예약 API"), no technical-layer limbs, and at most one common limb (metadata.common=true). Read umtri://rules/trunk-kinds before creating a trunk or a limb under one.',
         'After creating a leaf/vein, consider its connections: if it calls/feeds another node add an api (create_api), if it depends on/is built on another add an edge (create_edge). The response carries a connectionCheck reminder. See umtri://rules/system-structure (Connections).',
         'Do not open a new season just because none fits — attach to the now-season, or ask the user. create_season needs their confirmation (umtri://rules/seasons).',
         'When realizing a human-drawn plan brief, any detail nodes you add should carry metadata.plan=true and the realized node needs metadata.implements — see umtri://rules/plan. A trunk is never plan: metadata.plan on a trunk is rejected.',
@@ -685,19 +686,25 @@ export function registerTools(server, { api }) {
     async ({ slug, type, label, parent, season, description, tags, metadata, sproutedAt }) => {
       try {
         let parentType = null;
+        let parentKind = null;
+        let siblingCommonCount = 0;
         let siblingLeafLabels;
         if (parent) {
           const graph = await api.get(`/api/projects/${encodeURIComponent(slug)}/graph`);
           const parentNode = (graph.nodes || []).find(n => n.id === parent);
           if (!parentNode) throw new Error(`Parent node "${parent}" not found in ground "${slug}".`);
           parentType = parentNode.type;
+          // trunk 유형별 limb 규칙(umtri://rules/trunk-kinds)에 쓰는 부모 kind와 공통 limb 수.
+          parentKind = parentNode.metadata?.kind ?? null;
+          siblingCommonCount = (graph.nodes || [])
+            .filter(n => n.parent === parent && n.type === 'limb' && n.metadata?.common === true).length;
           siblingLeafLabels = (graph.nodes || [])
             .filter(n => n.parent === parent && n.type === 'leaf')
             .map(n => n.label);
         }
 
         const { ok, rejectReason, warnings } = validateNode({
-          type, label, parentType, description, metadata, siblingLeafLabels,
+          type, label, parentType, parentKind, siblingCommonCount, description, metadata, siblingLeafLabels,
         });
         if (!ok) throw new Error(`Rejected by protocol: ${rejectReason}`);
 
@@ -749,7 +756,9 @@ export function registerTools(server, { api }) {
         warnings = warnings.concat(patchResult.warnings);
         warnings = warnings.concat(toolMarkupCheck({ description: patch.description }));
 
-        if (patch.type !== undefined || patch.parent !== undefined || patch.label !== undefined) {
+        // metadata.kind·common이 바뀌면 trunk 유형 경고도 다시 본다.
+        const kindTouched = patch.metadata && ('kind' in patch.metadata || 'common' in patch.metadata);
+        if (patch.type !== undefined || patch.parent !== undefined || patch.label !== undefined || kindTouched) {
           const graph = await api.get(`/api/projects/${encodeURIComponent(slug)}/graph`);
           const current = (graph.nodes || []).find(n => n.id === id);
           if (!current) throw new Error(`Node "${id}" not found in ground "${slug}".`);
@@ -761,14 +770,20 @@ export function registerTools(server, { api }) {
           const newMetadata = patch.metadata !== undefined
             ? Object.fromEntries(Object.entries({ ...(current.metadata || {}), ...patch.metadata }).filter(([, v]) => v !== null))
             : current.metadata;
-          const parentType = newParentId
-            ? (graph.nodes || []).find(n => n.id === newParentId)?.type ?? null
-            : null;
+          const parentNode = newParentId ? (graph.nodes || []).find(n => n.id === newParentId) : null;
+          const parentType = parentNode?.type ?? null;
+          const parentKind = parentNode?.metadata?.kind ?? null;
+          const siblingCommonCount = newParentId
+            ? (graph.nodes || []).filter(n => n.parent === newParentId && n.id !== id
+                && n.type === 'limb' && n.metadata?.common === true).length
+            : 0;
 
           const result = validateNode({
             type: newType,
             label: newLabel,
             parentType,
+            parentKind,
+            siblingCommonCount,
             description: newDescription,
             metadata: newMetadata,
             phase: 'update',

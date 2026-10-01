@@ -32,6 +32,10 @@ Domains or feature areas (auth, payments, reservations, dashboard, …) are
 that spans the user-app and admin trunks" — fine. "Authentication is a
 trunk" — no.
 
+Record which of the five kinds the trunk is in `metadata.kind` (`front`,
+`server`, `database`, `library`, `device`). The kind decides how its limbs
+split — see `umtri://rules/trunk-kinds`.
+
 Naming convention (recommended, not enforced):
 - Apps: `<name>-app` (e.g. `user-app`, `kiosk-app`)
 - Servers: `<name>-server` (e.g. `api-server`, `iot-server`)

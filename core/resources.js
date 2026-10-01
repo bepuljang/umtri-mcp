@@ -23,6 +23,13 @@ const RESOURCES = [
     description: 'Reclassification policy, twig vs leaf decision matrix, twig promotion signals, redundant-child antipattern, Korean label heuristics. Read only when restructuring an existing tree or wrestling with a borderline classification.',
   },
   {
+    name: 'trunk-kinds',
+    uri: 'umtri://rules/trunk-kinds',
+    file: 'trunk-kinds.md',
+    title: 'Trunk kinds — how each kind of trunk branches',
+    description: 'Five trunk kinds (front, server, database, library, device) recorded in metadata.kind, the limb axis for each, one common limb per trunk (metadata.common), the same domain name across trunks with no suffix, and how kinds connect. Read before creating a trunk or a limb directly under one, and when restructuring.',
+  },
+  {
     name: 'seasons',
     uri: 'umtri://rules/seasons',
     file: 'seasons.md',

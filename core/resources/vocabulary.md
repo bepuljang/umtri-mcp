@@ -24,8 +24,8 @@ guideline; see `umtri://rules/system-structure`.
 
 | Type    | Role      | What it represents                                                 |
 | ------- | --------- | ------------------------------------------------------------------ |
-| `trunk` | structure | A deployable system or independent service (app, server, DB).       |
-| `limb`  | structure | A domain or feature area inside a trunk (auth, payments, dashboard).|
+| `trunk` | structure | A deployable system or independent service (app, server, DB). Carries `metadata.kind` — see `umtri://rules/trunk-kinds`. |
+| `limb`  | structure | A domain or feature area inside a trunk (auth, payments, dashboard) — the axis depends on the trunk's kind. |
 | `twig`  | structure | A cluster of related leaves (a module, a feature group).            |
 | `leaf`  | object    | The thing itself — class, component, screen, entity. Noun phrase.   |
 | `vein`  | action    | A capability the object performs — a method/function that exists now. Verb phrase. NOT a task or a change that was made. |
@@ -172,9 +172,14 @@ If you see one of these in the response, read it before proceeding:
 | `structure-without-children`  | New limb/twig will render dormant until a leaf/vein appears.      |
 | `twig-promotion-candidate`    | Twig description suggests it should be a sibling limb.            |
 | `redundant-child`             | A twig and its only leaf duplicate the same concept.              |
+| `trunk-kind-missing` / `trunk-kind-unknown` | Trunk has no / an unknown `metadata.kind` (front, server, database, library, device). |
+| `limb-domain-suffix`          | Limb under a trunk ends in `API`/`응답`/`테이블`/`관리`… — name the domain alone. |
+| `limb-layer-axis`             | Limb is a technical layer (State, Utils, Routes, Middleware…).     |
+| `common-limb-duplicate`       | The trunk already has its one common limb (`metadata.common`).    |
 
 ## Further reading (read only when relevant)
 
+- `umtri://rules/trunk-kinds` — the five trunk kinds and how each splits into limbs
 - `umtri://rules/system-structure` — metadata key conventions, file→leaf mapping
 - `umtri://rules/vocabulary-detailed` — promotion signals, reclassification
   policy, twig-vs-leaf decision matrix, redundant-child antipattern details
