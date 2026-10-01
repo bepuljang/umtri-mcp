@@ -82,6 +82,7 @@ exists there, reuse its exact label.
 | `limb-domain-suffix` | A limb directly under a trunk ends in a kind suffix (`API`, `응답`, `테이블`, `관리`, `Table(s)`, `Admin`, `Management`). Drop it and reuse the domain name. |
 | `limb-layer-axis` | A limb is named after a technical layer. Split by the trunk kind's axis instead. |
 | `common-limb-duplicate` | The trunk already has a limb with `metadata.common: true`. |
+| `common-content-outside-common` | A front limb is named like common content (design system, shared components, app shell, layout), or a limb is named `공통`/`Common`/`Shared` without `metadata.common: true`. Make it a twig of the common limb, or mark it. |
 
 A table leaf (`metadata.table` set) may share its name with a first-class record — a `Bugs` table is not a bug — so `reserved-domain` does not fire on it.
 

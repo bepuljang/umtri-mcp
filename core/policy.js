@@ -44,6 +44,18 @@ const LAYER_LIMB_LABELS = [
   '모델', '서비스', '컨트롤러', '컴포넌트', '핸들러',
 ];
 
+// front trunk의 공통 limb에 들어가야 할 것들 — 따로 limb로 서면 공통이 여러 갈래로 흩어진다
+// (Coolus '공용 요소', TennisRepublic store-app '디자인 시스템'). 라벨에 포함되면 잡는다.
+const FRONT_COMMON_CONTENT = [
+  '디자인 시스템', '디자인 토큰', '공용 컴포넌트', '공통 컴포넌트', '공용 요소', '공통 요소',
+  '공용 ui', '공통 ui',
+  'design system', 'design tokens', 'shared components', 'common components', 'ui system', 'ui kit',
+];
+// 셸·레이아웃은 기능 이름에도 흔히 들어가서("매장 레이아웃 편집") 라벨 전체가 그 말일 때만 잡는다.
+const FRONT_COMMON_EXACT = ['앱 셸', '앱 틀', '레이아웃', '셸', 'app shell', 'shell', 'layout'];
+// 공통 limb다운 이름 — common 표시만 빠진 경우를 알린다.
+const COMMON_NAMES = ['공통', '공용', 'common', 'shared'];
+
 // Promotion signals — when a twig's description contains these, it might belong at limb level.
 // Derived from sidebar/auth/ui-system limb promotions on 2026-05-21.
 const PROMOTION_KEYWORDS = [
@@ -173,6 +185,23 @@ export function limbUnderTrunkChecks({ type, label, parentType, parentKind, meta
       severity: 'warn',
       message: `Limb "${label}" names a technical layer. Split this trunk by ${axis}; put what this would hold into the feature/domain limb it serves, or into the trunk's one common limb.`,
     });
+  }
+
+  if (metadata?.common !== true) {
+    const lower = trimmed.toLowerCase();
+    if (COMMON_NAMES.includes(lower)) {
+      out.push({
+        rule: 'common-content-outside-common',
+        severity: 'info',
+        message: `Limb "${label}" reads like the trunk's common limb but is not marked. Set metadata.common=true on it (one per trunk) so the rules can find it. See umtri://rules/trunk-kinds.`,
+      });
+    } else if (parentKind === 'front' && (FRONT_COMMON_EXACT.includes(lower) || FRONT_COMMON_CONTENT.some(k => lower.includes(k)))) {
+      out.push({
+        rule: 'common-content-outside-common',
+        severity: 'info',
+        message: `Limb "${label}" holds what a front trunk keeps in its one common limb (app shell, design system, shared components). Make it a twig under the common limb (metadata.common=true) instead of a separate limb. See umtri://rules/trunk-kinds.`,
+      });
+    }
   }
 
   if (metadata?.common === true && siblingCommonCount > 0) {

@@ -176,6 +176,7 @@ If you see one of these in the response, read it before proceeding:
 | `limb-domain-suffix`          | Limb under a trunk ends in `API`/`응답`/`테이블`/`관리`… — name the domain alone. |
 | `limb-layer-axis`             | Limb is a technical layer (State, Utils, Routes, Middleware…).     |
 | `common-limb-duplicate`       | The trunk already has its one common limb (`metadata.common`).    |
+| `common-content-outside-common` | Front limb holds common content (design system, shell…) outside the common limb, or a `공통` limb isn't marked. |
 
 ## Further reading (read only when relevant)
 
