@@ -451,7 +451,9 @@ export function validateNode({ type, label, parentType, parentKind = null, sibli
     else warnings.push(h);
   }
 
-  let r = reservedDomainCheck(label);
+  // 테이블 leaf(metadata.table)의 라벨은 테이블의 논리명이다 — "버그" 테이블은 bugs 레코드가 아니라
+  // 그 레코드를 담는 테이블이라 예약어와 이름이 같아도 정당하다(umtri://rules/trunk-kinds).
+  let r = type === 'leaf' && metadata?.table ? null : reservedDomainCheck(label);
   // 유형이 정해진 trunk 바로 아래 limb는 도메인 이름이다 — Umtri 자신의 server·db에는 "버그" 도메인이
   // 있다. 그 코드 영역을 가리키는 거라면 정당하니 info로 낮추고 그 뜻을 말해 준다.
   if (r?.rule === 'reserved-domain' && type === 'limb' && parentType === 'trunk' && TRUNK_KINDS.includes(parentKind)) {

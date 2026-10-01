@@ -14,7 +14,7 @@ label: the kind is what the MCP reads to check the limbs under it.
 | --- | --- | --- | --- | --- |
 | `front` | Something people use on a screen — app, web app, admin, static site | User-facing feature or flow (Reservations, My page). A public site splits by page | App shell (layout, routing, boot), design system, shared components | Screens, components |
 | `server` | A service that takes requests — API, webhooks, jobs | Domain / resource. Non-domain consumers (external integrations, inbound webhooks) get their own limb | Request handling — authentication, authorization, errors, boot | Endpoint groups (`metadata.endpoints`) |
-| `database` | A data store — relational DB, document DB, cache | Domain, **with the same names as the server** | Tables shared by many domains (sessions, audit log) | Tables (`metadata.columns`), labelled by their logical name |
+| `database` | A data store — relational DB, document DB, cache | Domain, **with the same names as the server** | Tables shared by many domains (sessions, audit log) | Tables, labelled by their logical name, with `metadata.table` (the real name) and `metadata.columns` |
 | `library` | Shared code or a package that other trunks import | Capability or concept (Money, Signal pipeline) | Shared types and constants | Modules |
 | `device` | Physical hardware, an embedded screen, an enclosure | Physical part or screen region | Device-wide parts (power, communication) | Parts, screen elements |
 
@@ -82,6 +82,8 @@ exists there, reuse its exact label.
 | `limb-domain-suffix` | A limb directly under a trunk ends in a kind suffix (`API`, `응답`, `테이블`, `관리`, `Table(s)`, `Admin`, `Management`). Drop it and reuse the domain name. |
 | `limb-layer-axis` | A limb is named after a technical layer. Split by the trunk kind's axis instead. |
 | `common-limb-duplicate` | The trunk already has a limb with `metadata.common: true`. |
+
+A table leaf (`metadata.table` set) may share its name with a first-class record — a `Bugs` table is not a bug — so `reserved-domain` does not fire on it.
 
 ## Reshaping an existing tree
 
