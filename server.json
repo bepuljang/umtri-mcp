@@ -8,7 +8,7 @@
     "source": "github"
   },
   "websiteUrl": "https://docs.umtri.io",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "remotes": [
     {
       "type": "streamable-http",
@@ -19,7 +19,7 @@
     {
       "registryType": "npm",
       "identifier": "umtri-mcp",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "transport": {
         "type": "stdio"
       },

@@ -12,9 +12,14 @@ export function createApiClient({ baseUrl, getToken }) {
     return `Bearer ${token}`;
   }
 
+  // 서버가 "이 사용자가 MCP로 연결해 본 적 있음"을 기록하는 표시 — stdio·HTTP 공용.
+  async function headers() {
+    return { Authorization: await authHeader(), 'X-Umtri-Client': 'mcp' };
+  }
+
   async function get(path) {
     const res = await fetch(`${base}${path}`, {
-      headers: { Authorization: await authHeader() },
+      headers: await headers(),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -26,7 +31,7 @@ export function createApiClient({ baseUrl, getToken }) {
   async function mutate(method, path, body) {
     const init = {
       method,
-      headers: { Authorization: await authHeader() },
+      headers: await headers(),
     };
     if (body != null) {
       init.headers['Content-Type'] = 'application/json';

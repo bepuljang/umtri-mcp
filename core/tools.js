@@ -177,7 +177,7 @@ function compressProjects(projects, { descMode = 'excerpt' } = {}) {
       openBugs: p.openBugs,
       seasonCount: p.seasonCount,
     };
-    // 팀 ground면 소속과 내 역할을 싣는다 — viewer면 쓰기 도구가 403으로 막힌다는 걸 미리 알 수 있게.
+    // 팀 ground면 소속과 내 역할을 싣는다 — viewer·reporter면 쓰기 도구가 403으로 막힌다는 걸 미리 알 수 있게.
     // personal이면 생략(대부분의 ground가 personal이라 매번 실으면 잡음이다).
     if (p.org && p.org.kind === 'team') {
       out.org = p.org.slug;
@@ -335,7 +335,7 @@ export function registerTools(server, { api }) {
     'list_projects',
     {
       title: 'List grounds (projects)',
-      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. A ground that belongs to a team also carries org (the team slug) and role (owner/editor/viewer) — a viewer can read but every write tool returns 403 there. A ground with wiki pages also carries wikiCount — prose the tree cannot hold (conventions, decisions, glossary); read it with list_wiki. Pass view="full" for all fields (seedMeta — the ground\'s human-written intent: goal, endDate, budget, audience — plus typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
+      description: 'Returns all grounds the authenticated user can access, with latest activity timestamp. Use this first to discover slugs for other tools. By default returns a summary view — each ground carries slug, name, isActive, transplanting, nodeCount, openBugs, seasonCount, nowSeasonLabel, latestActivityAt, plus a 200-char description excerpt. A ground that belongs to a team also carries org (the team slug) and role (owner/editor/reporter/viewer) — a viewer can read but every write tool returns 403 there; a reporter can only create_bug and update_bug. A ground with wiki pages also carries wikiCount — prose the tree cannot hold (conventions, decisions, glossary); read it with list_wiki. Pass view="full" for all fields (seedMeta — the ground\'s human-written intent: goal, endDate, budget, audience — plus typeCounts, raw metadata, timestamps); the icon base64 in metadata is always stripped (UI-only).',
       inputSchema: z.object({
         view: z.enum(['summary', 'full']).optional().describe('summary (default) for a compact list; full for every field.'),
       }),
