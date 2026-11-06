@@ -56,7 +56,7 @@ appear and then error, re-check the token and its scope — `read` tokens cannot
 ## Tools
 
 **Read** — `get_graph`, `get_bug`, `get_impact`, `list_projects`, `list_bugs`, `list_seasons`,
-`list_events`
+`list_events`, `export_ground`
 
 **Write** — `create_project`, `create_node`, `update_node`, `delete_node` (a subtree only with
 `cascade: true`), `create_edge`, `delete_edge`, `create_api`, `update_api`, `delete_api`,

@@ -79,6 +79,13 @@ const RESOURCES = [
     description: 'Modelling principle: nodes are user-visible units, not code files. Metadata key conventions.',
   },
   {
+    name: 'data',
+    uri: 'umtri://about/data',
+    file: 'data.md',
+    title: 'What Umtri receives — and what it never sees',
+    description: 'Umtri holds only what tool calls send (labels, descriptions, file paths, connections, bug and wiki text) and never reads files or git. Lists what must not be recorded (secrets, env values, personal data, verbatim code), where data is stored, who can see it, and how it is exported or deleted. Read when the human asks whether it is safe to map their project, or before drawing a tree for a new ground.',
+  },
+  {
     name: 'vision',
     uri: 'umtri://about/vision',
     file: 'vision.md',

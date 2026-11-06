@@ -6,9 +6,17 @@
 export function createApiClient({ baseUrl, getToken }) {
   const base = String(baseUrl || '').replace(/\/$/, '');
 
+  // 토큰 없는 연결(HTTP 익명 discovery)에서 도구를 부르면 여기서 멈춘다. 연결은 되고 호출만
+  // 실패하는 모양이라, 이 문구가 사람에게 닿는 유일한 안내다 — 발급 위치와 넣는 자리를 한 번에.
   async function authHeader() {
     const token = await getToken();
-    if (!token) throw new Error('No API token available for request.');
+    if (!token) {
+      throw new Error(
+        'This connection has no API token, so tools cannot run. Sign in at app.umtri.io, generate a personal access token in Settings → API Tokens, ' +
+        'then send it as "Authorization: Bearer umtri_pat_…" (remote https://mcp.umtri.io) or set UMTRI_API_TOKEN (npx umtri-mcp). ' +
+        'Guide: https://docs.umtri.io/en/token',
+      );
+    }
     return `Bearer ${token}`;
   }
 

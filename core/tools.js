@@ -535,6 +535,23 @@ export function registerTools(server, { api }) {
   );
 
   server.registerTool(
+    'export_ground',
+    {
+      title: 'Export a whole ground as JSON',
+      description: 'Returns everything in a ground as one JSON document — project, seasons, nodes (removed ones included, with removedAt), edges, apis, bugs and wiki pages with full bodies. For backups, moving off Umtri, or answering "can I take my data out?" (yes — see umtri://about/data). The result is large; save it to a file rather than summarising it, and do not call it for ordinary reads (use get_graph).',
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+      }),
+    },
+    async ({ slug }) => {
+      try {
+        const data = await api.get(`/api/projects/${encodeURIComponent(slug)}/export`);
+        return jsonResult(data);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
     'list_events',
     {
       title: 'List change history of a ground',

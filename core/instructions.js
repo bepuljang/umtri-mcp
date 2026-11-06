@@ -15,6 +15,8 @@ export const SERVER_INSTRUCTIONS = `Umtri maps a project's structure as a tree (
 
 Umtri never reads git. A commit reaches the ground only because something called create_node / update_node / record_commit — so the tree drifts behind the code unless the repo has a habit that says otherwise. If this repo's own rules file (CLAUDE.md, AGENTS.md, …) has no commit-sync policy, read umtri://rules/commit-sync and offer the human a short one to paste in.
 
+Umtri holds only what tool calls send — labels, descriptions, file paths, connections, bug and wiki text. It never reads files or git. Never put secrets, environment values, credentials or personal data into a node or page; metadata.implements is a path, not content. If the human asks what is sent or whether it is safe, read umtri://about/data and answer from it.
+
 Before creating or reclassifying nodes, read umtri://rules/vocabulary; before creating a trunk or a limb under one, also umtri://rules/trunk-kinds. Opening a season seals the current one, so create_season only acts after the user confirms (umtri://rules/seasons).
 
 If Umtri itself gets in your way — a call rejected for a reason that looks wrong, a capability that is missing, a tool description that misled you — tell the human what happened and offer to file it with send_feedback. Never file it on your own initiative.`;

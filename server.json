@@ -8,7 +8,14 @@
     "source": "github"
   },
   "websiteUrl": "https://docs.umtri.io",
-  "version": "1.7.0",
+  "icons": [
+    {
+      "src": "https://umtri.io/assets/umtri-logo-400.png",
+      "mimeType": "image/png",
+      "sizes": ["400x400"]
+    }
+  ],
+  "version": "1.7.1",
   "remotes": [
     {
       "type": "streamable-http",
@@ -19,7 +26,7 @@
     {
       "registryType": "npm",
       "identifier": "umtri-mcp",
-      "version": "1.7.0",
+      "version": "1.7.1",
       "transport": {
         "type": "stdio"
       },

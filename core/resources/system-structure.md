@@ -81,6 +81,23 @@ served to users (its pages, its i18n, its shell) is a product surface and
 belongs in the tree. The line is not "markdown vs code" — it is *served to
 users* vs *read by us*.
 
+## What not to record — the map is structure, not contents
+
+Everything above is about *which* things become nodes. This is about what goes
+into a node once it exists. A label, a description, a metadata value or a wiki
+page never holds:
+
+- **secrets** — API keys, tokens, passwords, environment values
+- **customer or personal data** — names, emails, ids copied from production
+- **verbatim source code** — point at the file with `implements`; do not paste
+  the function
+- **internal hostnames, IPs, URLs** beyond what the structure needs to say
+
+`implements` is a list of paths, not contents. A description says what a thing
+is for, not how its code reads. If the honest `implements` of a node would be a
+`.env` or a credentials file, name the node and leave `implements` empty. The
+full statement of what Umtri receives and keeps is `umtri://about/data`.
+
 ## Trunk and limb rules
 
 - `trunk` = a big domain (e.g. `www`, `server`, `db`). Pick stable,
