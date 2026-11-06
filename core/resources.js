@@ -27,7 +27,7 @@ const RESOURCES = [
     uri: 'umtri://rules/trunk-kinds',
     file: 'trunk-kinds.md',
     title: 'Trunk kinds — how each kind of trunk branches',
-    description: 'Five trunk kinds (front, server, database, library, device) recorded in metadata.kind, the limb axis for each, one common limb per trunk (metadata.common), the same domain name across trunks with no suffix, and how kinds connect. Read before creating a trunk or a limb directly under one, and when restructuring.',
+    description: 'Six trunk kinds (front, server, database, library, device, tooling) recorded in metadata.kind, the limb axis for each, one common limb per trunk (metadata.common), the same domain name across trunks with no suffix, and how kinds connect. Read before creating a trunk or a limb directly under one, and when restructuring.',
   },
   {
     name: 'seasons',

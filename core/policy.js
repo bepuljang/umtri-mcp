@@ -27,7 +27,7 @@ const TRUNK_PATTERN = /^[a-z][a-z0-9-]*(-app|-server|-service|-job|-cdn)$|^[a-z]
 // Trunk kinds — umtri://rules/trunk-kinds. Recorded in trunk metadata.kind.
 // A trunk that fits none of these keeps kind unset; the agent asks the human whether to
 // suggest a new kind via send_feedback (never files it on its own).
-export const TRUNK_KINDS = ['front', 'server', 'database', 'library', 'device'];
+export const TRUNK_KINDS = ['front', 'server', 'database', 'library', 'device', 'tooling'];
 
 // Suffixes that repeat what the trunk kind already says ("예약 API", "Reservation tables").
 // Matched at the end of a limb label directly under a trunk.
@@ -132,11 +132,11 @@ export function trunkNamingCheck(type, label) {
   };
 }
 
-// trunk에 kind가 없거나 다섯 유형 밖이면 알린다. 거부하지 않는다 — 기존 나무가 대부분 kind 없이 있다.
+// trunk에 kind가 없거나 유형 목록 밖이면 알린다. 거부하지 않는다 — 기존 나무가 대부분 kind 없이 있다.
 export function trunkKindCheck(type, metadata) {
   if (type !== 'trunk') return null;
   const kind = metadata?.kind;
-  const fallback = 'If none of the five fits, leave kind unset, tell the human which trunk did not fit and why, and offer to suggest a new kind with send_feedback (kind "improvement") — do not file it on your own. See umtri://rules/trunk-kinds.';
+  const fallback = 'If none of them fits, leave kind unset, tell the human which trunk did not fit and why, and offer to suggest a new kind with send_feedback (kind "improvement") — do not file it on your own. See umtri://rules/trunk-kinds.';
   if (kind == null || kind === '') {
     return {
       rule: 'trunk-kind-missing',
@@ -179,6 +179,7 @@ export function limbUnderTrunkChecks({ type, label, parentType, parentKind, meta
       database: 'domains, named like the server',
       library: 'capabilities or concepts',
       device: 'physical parts or screen regions',
+      tooling: 'what the tools do (build & deploy, measurement & simulation, docs & conventions, dev environment)',
     }[parentKind] ?? "the trunk kind's axis (umtri://rules/trunk-kinds)";
     out.push({
       rule: 'limb-layer-axis',
@@ -238,7 +239,7 @@ export function dormancyHintCheck(type) {
   return {
     rule: 'structure-without-children',
     severity: 'info',
-    message: `${type} is a structure node — it will render as dormant (dim) until it has a leaf or vein descendant. If this represents a single component or object (one React component, one file, one service), type='leaf' directly under structure is allowed (see PRD-node-roles.md §위계 규칙: trunk→leaf, limb→leaf OK).`,
+    message: `${type} is a structure node — it will render as dormant (dim) until it has a leaf or vein descendant. If this represents a single component or object (one React component, one file, one service), type='leaf' directly under a limb is allowed (limb→leaf OK; not trunk→leaf — see umtri://rules/vocabulary).`,
   };
 }
 
@@ -458,6 +459,15 @@ export function hierarchyCheck(parentType, childType) {
       rule: 'hierarchy-skip-leaf',
       severity: 'warn',
       message: 'A vein is meant to live under a leaf (object), not directly under structure. Consider adding a leaf parent first.',
+    };
+  }
+  // trunk 바로 아래는 limb만이다. 객체 하나짜리 도메인도 limb(잎 하나)이거나 상위 개념 limb의 twig·leaf다 —
+  // 직속 leaf는 그래프에서 limb처럼 길게 뻗어 trunk의 도메인 목록을 흐린다(umtri://rules/trunk-kinds).
+  if (parentType === 'trunk' && childRole === 'object') {
+    return {
+      rule: 'trunk-direct-leaf',
+      severity: 'warn',
+      message: 'A trunk holds limbs, not leaves. Put this leaf under the limb of its domain — a one-object domain is still a limb — or under the limb of the parent concept it belongs to. See umtri://rules/trunk-kinds ("What earns a limb").',
     };
   }
   return null;

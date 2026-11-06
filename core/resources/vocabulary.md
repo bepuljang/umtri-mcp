@@ -172,11 +172,17 @@ If you see one of these in the response, read it before proceeding:
 | `structure-without-children`  | New limb/twig will render dormant until a leaf/vein appears.      |
 | `twig-promotion-candidate`    | Twig description suggests it should be a sibling limb.            |
 | `redundant-child`             | A twig and its only leaf duplicate the same concept.              |
-| `trunk-kind-missing` / `trunk-kind-unknown` | Trunk has no / an unknown `metadata.kind` (front, server, database, library, device). |
+| `trunk-kind-missing` / `trunk-kind-unknown` | Trunk has no / an unknown `metadata.kind` (front, server, database, library, device, tooling). |
 | `limb-domain-suffix`          | Limb under a trunk ends in `API`/`응답`/`테이블`/`관리`… — name the domain alone. |
 | `limb-layer-axis`             | Limb is a technical layer (State, Utils, Routes, Middleware…).     |
 | `common-limb-duplicate`       | The trunk already has its one common limb (`metadata.common`).    |
 | `common-content-outside-common` | Front limb holds common content (design system, shell…) outside the common limb, or a `공통` limb isn't marked. |
+
+`get_graph` also attaches `iaHints` on the whole tree: `missing-implements-coverage`,
+`isolated-leaf-vein`, `sibling-cluster` (twig candidate), and `thin-limb` — a trunk
+where half or more of the limbs hold a single leaf or nothing: small domains that
+share a parent concept belong in one limb (see `umtri://rules/trunk-kinds`,
+"What earns a limb"). A leaf directly under a trunk warns with `trunk-direct-leaf`.
 
 ## Further reading (read only when relevant)
 

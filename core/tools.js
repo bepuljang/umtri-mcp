@@ -230,6 +230,7 @@ function compressSeasons(seasons) {
 // (2) sibling-cluster: 과밀한 limb/twig(잎 ≥4) 아래 접두어를 ≥3개 공유하는 잎 (twig 후보)
 //     — create_node의 parallel-leaves-need-twig와 임계값·정밀도 동일. "leaf 많음"만으론 발사 안 함
 //     (평평하지만 그룹 근거 없는 묶음은 정상). 구버전 junk-drawer-limb(무조건 ≥4)는 오발 잦아 제거.
+// (3) thin-limb: 한 trunk의 limb 절반 이상이 잎 하나 이하일 때 (trunk 단위 1건)
 export function computeIaHints(nodes, { edges = [], apis = [] } = {}) {
   const hints = [];
   const children = new Map();
@@ -297,6 +298,32 @@ export function computeIaHints(nodes, { edges = [], apis = [] } = {}) {
         suggestion: `${labels.length} leaves under an already-crowded "${parent.label}" share prefix "${prefix}". A twig "${prefix} …" would group them. (Don't over-nest sparse parents — sharing a prefix is fine when there are only a few.)`,
       });
     }
+  }
+
+  // (3) thin-limb — trunk 직속 가지(limb)인데 아래가 비었거나 잎 하나뿐인 것. 잎 하나 limb 자체는 허용이고,
+  // 같은 상위 개념의 작은 도메인이 limb 하나로 묶였는지 보라는 신호다. 도메인 이름을 trunk마다
+  // 맞추다 보면(trunk-kinds "같은 도메인, 같은 이름") 테이블 하나·라우트 하나짜리 limb이 trunk 수만큼
+  // 생긴다 — 실제 ground에서 limb의 절반이 이 모양이었다. 앱은 이런 limb을 접어 그리지만, 구조로는
+  // 여전히 한 단계가 정보 없이 끼어 있는 것이라 다듬을 후보로 올린다. 하나둘이면 정상(자라는 중)이라
+  // trunk 안 limb의 절반 이상일 때만, 그 trunk 단위로 한 번 말한다.
+  for (const trunk of nodes.filter((n) => !n.parent)) {
+    const limbs = (children.get(trunk.id) || []).filter((l) => l.type === 'limb');
+    if (limbs.length < 4) continue;
+    const thin = limbs.filter((l) => {
+      const kids = children.get(l.id) || [];
+      if (kids.length === 0) return !l.metadata?.placeholder;
+      return kids.length === 1 && !(children.get(kids[0].id) || []).length;
+    });
+    if (thin.length * 2 < limbs.length) continue;
+    hints.push({
+      rule: 'thin-limb',
+      trunkId: trunk.id,
+      trunkLabel: trunk.label,
+      limbCount: limbs.length,
+      thinCount: thin.length,
+      sampleIds: thin.slice(0, 8).map((l) => l.id),
+      suggestion: `${thin.length} of ${limbs.length} limbs under "${trunk.label}" hold a single leaf or nothing. Small domains that share a parent concept belong in one limb named for that concept, each kept as a named twig or leaf; a one-object domain with no parent concept stays a limb of its own. Never move a leaf directly under the trunk. See umtri://rules/trunk-kinds ("What earns a limb").`,
+    });
   }
 
   return hints;
@@ -666,7 +693,7 @@ export function registerTools(server, { api }) {
         'parent ∈ existing node id; omit to create a root-level node.',
         'season ∈ existing season id; omit to use the active "now" season. Past seasons are normally rejected, but allowed while the ground is transplanting (project.transplanting=true) — nodes added then are auto-stamped metadata.transplanted=true for audit. See umtri://rules/transplant.',
         'The tool validates against protocol policies. Hierarchy violations are rejected. Soft issues (reserved-domain labels, leaf↔vein heuristic, trunk naming) come back as warnings in the response — reconsider before continuing if warnings appear.',
-        'A trunk carries metadata.kind ∈ front · server · database · library · device, and its limbs follow that kind\'s axis: same domain name across trunks with no suffix ("예약", not "예약 API"), no technical-layer limbs, and at most one common limb (metadata.common=true). Read umtri://rules/trunk-kinds before creating a trunk or a limb under one.',
+        'A trunk carries metadata.kind ∈ front · server · database · library · device · tooling, and its limbs follow that kind\'s axis: same domain name across trunks with no suffix ("예약", not "예약 API"), no technical-layer limbs, and at most one common limb (metadata.common=true). Read umtri://rules/trunk-kinds before creating a trunk or a limb under one.',
         'After creating a leaf/vein, consider its connections: if it calls/feeds another node add an api (create_api), if it depends on/is built on another add an edge (create_edge). The response carries a connectionCheck reminder. See umtri://rules/system-structure (Connections).',
         'Do not open a new season just because none fits — attach to the now-season, or ask the user. create_season needs their confirmation (umtri://rules/seasons).',
         'When realizing a human-drawn plan brief, any detail nodes you add should carry metadata.plan=true and the realized node needs metadata.implements — see umtri://rules/plan. A trunk is never plan: metadata.plan on a trunk is rejected.',
@@ -876,17 +903,21 @@ export function registerTools(server, { api }) {
     'record_commit',
     {
       title: 'Record a git commit onto the nodes it touched',
-      description: 'Configuration record (CI/CD). Given a commit SHA and the files it changed, finds nodes whose metadata.implements include any of those files and appends the commit (sha + timestamp + optional message) to their metadata.commits (deduped by sha). Returns the matched node ids. When one commit touches several nodes that are NOT yet connected, the response also carries coChangeCandidates[] ({a, aLabel, b, bLabel}) — nodes that change together are dependency candidates; review them and add a create_edge/create_api where a real relation exists (not auto-created; suppressed for large multi-node commits). Umtri does not run jobs or read git itself — a GitHub Action / CI step or an agent supplies the sha+files. Recording a commit is the LAST step: first make sure the change is in the tree (new unit → create_node with metadata.implements; moved file → update_node), otherwise the sha lands on the nodes that happen to exist and the new ones stay invisible. A repo that keeps forgetting should write the habit down — see umtri://rules/commit-sync. See also umtri://rules/plan.',
+      description: 'Configuration record (CI/CD). Given a commit SHA and the files it changed, finds nodes whose metadata.implements include any of those files and appends the commit (sha + timestamp + optional message) to their metadata.commits (deduped by sha). Returns the matched node ids. When one commit touches several nodes that are NOT yet connected, the response also carries coChangeCandidates[] ({a, aLabel, b, bLabel}) — nodes that change together are dependency candidates; review them and add a create_edge/create_api where a real relation exists (not auto-created; suppressed for large multi-node commits; pass coChange=false to skip them entirely when nobody will review, e.g. a CI step that only records). Umtri does not run jobs or read git itself — a GitHub Action / CI step or an agent supplies the sha+files. Recording a commit is the LAST step: first make sure the change is in the tree (new unit → create_node with metadata.implements; moved file → update_node), otherwise the sha lands on the nodes that happen to exist and the new ones stay invisible. A repo that keeps forgetting should write the habit down — see umtri://rules/commit-sync. See also umtri://rules/plan.',
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         sha: z.string().min(1).describe('Commit SHA (short or full).'),
         files: z.array(z.string()).min(1).describe('Repo-relative paths changed by the commit, matched against nodes\' metadata.implements.'),
         message: z.string().optional().describe('Commit message (optional, stored with the record).'),
+        coChange: z.union([z.boolean(), z.enum(['true', 'false']).transform(v => v === 'true')])
+          .optional().describe('Default true. false skips coChangeCandidates — for callers that record every commit and never review the suggestions.'),
       }),
     },
-    async ({ slug, sha, files, message }) => {
+    async ({ slug, sha, files, message, coChange }) => {
       try {
-        const res = await api.post(`/api/projects/${encodeURIComponent(slug)}/record-commit`, { sha, files, message });
+        const payload = { sha, files, message };
+        if (coChange !== undefined) payload.coChange = coChange;
+        const res = await api.post(`/api/projects/${encodeURIComponent(slug)}/record-commit`, payload);
         return jsonResult(res);
       } catch (e) { return errorResult(e); }
     },
@@ -1196,6 +1227,16 @@ export function registerTools(server, { api }) {
   // 독립적으로도 산다 — 붙일 노드가 없다고 못 적게 하면 정작 필요한 초기에 못 쓴다.
   // 아직 사람용 편집 화면이 없다: 지금은 이 도구들이 유일한 쓰기 경로다.
 
+  // 쓰기 응답에서 body를 뺀다. 에이전트는 방금 보낸 본문을 돌려받을 이유가 없고, 수만 자 문서에서는
+  // 이 응답이 전송 타임아웃을 부르는 쪽이었다. 길이(bodyChars)만 남기고, 다시 읽기는 get_wiki로.
+  // REST(PUT /wiki)는 그대로 전체를 돌려준다 — 앱이 쓰는 응답 형태를 MCP 사정으로 바꾸지 않는다.
+  function slimWikiWrite(written, warnings) {
+    if (!written || typeof written !== 'object') return written;
+    const { body, ...rest } = written;
+    const out = { ...rest, bodyChars: (body ?? '').length };
+    return warnings.length ? { ...out, warnings } : out;
+  }
+
   server.registerTool(
     'list_wiki',
     {
@@ -1226,18 +1267,33 @@ export function registerTools(server, { api }) {
   server.registerTool(
     'get_wiki',
     {
-      title: 'Read one wiki page',
-      description: 'Returns one wiki page in full. `ref` takes either the page slug (what a human says) or the internal id (wiki-<uuid>) — renaming a page changes its slug but never its id, so ids stay safe to store. Read the page before rewriting it: write_wiki with mode="replace" overwrites the body wholesale. Pass rev=<n> to read an older revision of the page instead of the current one (list them with list_wiki_revisions); to put an old revision back, do not paste its body into a write — use write_wiki mode="restore", which cannot mangle the prose in transit.',
+      title: 'Read one wiki page — in full, as an outline, one section, or the lines around a phrase',
+      description: [
+        'Returns one wiki page. `ref` takes either the page slug (what a human says) or the internal id (wiki-<uuid>) — renaming a page changes its slug but never its id, so ids stay safe to store. Every response carries rev (the current revision, what you pass as baseRev when you write) and bodyChars.',
+        'By default the whole body comes back. **Pages run long (tens of thousands of characters); do not read one in full to answer a small question.** view="outline" returns the lead paragraph and the heading tree (path like "1.2", level, heading, line, chars per section) — start there on a page you have not seen. section="<heading text or path>" returns just that section (through its sub-headings), plus the footnote definitions it references; it must match exactly one heading, and on an ambiguous match the error lists the candidates with their paths. find="<text>" returns the lines containing the text (case-insensitive, literal) with context lines around each, merged into blocks with line numbers — a block is ready to be the oldString of edit_wiki. find inside one section: pass both.',
+        'Read in full before write_wiki mode="replace" — it overwrites the body wholesale, and an outline is not the body. For a one-passage fix, find or section the spot and call edit_wiki instead.',
+        'Pass rev=<n> to read an older revision instead of the current page (list them with list_wiki_revisions; outline/section/find work there too). To put an old revision back, do not paste its body into a write — use write_wiki mode="restore", which cannot mangle the prose in transit.',
+      ].join(' '),
       inputSchema: z.object({
         slug: z.string().min(1).describe('Ground slug.'),
         ref: z.string().min(1).describe('Page slug (e.g. "deploy-notes") or id (wiki-<uuid>).'),
         rev: z.coerce.number().int().positive().optional().describe('Revision number to read. Omit for the current page.'),
+        view: z.enum(['full', 'outline']).optional().describe('"full" (default) returns the body; "outline" returns the lead and the heading tree with sizes instead. Ignored when section or find is given.'),
+        section: z.string().min(1).optional().describe('One heading, by its text (case-insensitive; backticks/emphasis ignored) or by its outline path ("1.2"). Returns that section and its sub-sections only.'),
+        find: z.string().min(1).optional().describe('Literal text to look for (case-insensitive). Returns matching lines with context, merged into blocks with line numbers. With section, searches inside that section only.'),
+        context: z.coerce.number().int().min(0).max(10).optional().describe('Lines of context around each find match. Default 2.'),
       }),
     },
-    async ({ slug, ref, rev }) => {
+    async ({ slug, ref, rev, view, section, find, context }) => {
       try {
         const base = `/api/projects/${encodeURIComponent(slug)}/wiki/${encodeURIComponent(ref)}`;
-        return jsonResult(await api.get(rev ? `${base}/revisions/${rev}` : base));
+        const qs = [];
+        if (view) qs.push(`view=${view}`);
+        if (section !== undefined) qs.push(`section=${encodeURIComponent(section)}`);
+        if (find !== undefined) qs.push(`find=${encodeURIComponent(find)}`);
+        if (context !== undefined) qs.push(`context=${context}`);
+        const url = (rev ? `${base}/revisions/${rev}` : base) + (qs.length ? `?${qs.join('&')}` : '');
+        return jsonResult(await api.get(url));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -1279,12 +1335,12 @@ export function registerTools(server, { api }) {
         '**The wiki is the project\'s encyclopedia: one page is one entry, and its body is the current spec and rules of that thing.** It is a tree read front to back: an overview page at the top, chapter pages under it, entries under those — place every page with parent (a page slug or id) and position (its order among siblings), and check list_wiki order="tree" to see where it belongs. For a new wiki, follow the table of contents in umtri://templates/wiki. The title is a plain noun for the thing in the reader\'s language (조직, 배포, Billing) — no dash, colon, parenthetical or sentence; the description goes in the lead. Give every page a kind — overview (the top page and chapter pages that introduce what is under them), concept (a product/domain concept or model), component (how one part of the system works), rule (a convention that must be kept), glossary (the project\'s vocabulary). Write it to this skeleton: a lead paragraph first (1–3 sentences saying what the thing is — not a heading, quote or list), then "## 스펙" / "## Spec" (how it works now; break it down with ###), then "## 규칙" / "## Rules" (invariants, prohibitions, required order). concept and component need Spec; rule needs Rules; overview and glossary are free-form after the lead. No other top-level (##) sections. Background, history, rejected alternatives and side notes go into footnotes — [^name] in the text, [^name]: … at the end — not into the body. A reason stays in the body only if someone changing the code would get it wrong without it.',
         'Write what the tree cannot hold and what a maintainer would otherwise have to reconstruct: why a decision went the way it did, the vocabulary this project uses, what an investigation concluded. Do not restate the structure — that is what nodes are for.',
         '**A page is a description, not a log.** Write it in the present tense, as a reference entry for the thing: how it works now, and the reasons that still constrain it. Do not append what you just did, do not add dated entries or a change-history section, do not keep progress checklists here — those go to bugs, plan nodes, list_events, and record_commit, and the page\'s own past is already kept in its revisions. When something changes, rewrite the sentence that is now wrong rather than adding a sentence saying it changed.',
-        'mode="replace" (default) overwrites the whole body — read the page first, or you will drop what was there; this is the normal way to update a page. mode="append" is the narrow case: adding a section the page genuinely lacked, never tacking on this session\'s summary. mode="restore" puts an earlier revision back: pass rev=<n> and nothing else, and the page returns to what it said then.',
+        'mode="replace" (default) overwrites the whole body — read the page first, or you will drop what was there; this is the normal way to rewrite a page. **To change one passage of an existing page, use edit_wiki instead** — it takes the exact text and its replacement, so a one-line fix on a long page does not resend the whole body. mode="append" is the narrow case: adding a section the page genuinely lacked, never tacking on this session\'s summary. mode="restore" puts an earlier revision back: pass rev=<n> and nothing else, and the page returns to what it said then.',
         'node attaches the page to a node; omit it and the page floats free, which is fine and common early on. Attach it later once the tree has a place for it. Deleting that node detaches the page rather than deleting it.',
         'Every write is kept as a revision, so a replace that drops prose can be undone (list_wiki_revisions, then mode="restore"). Consecutive writes by the same actor within 30 minutes fold into one revision instead of piling up, which means the body from before your session stays recoverable as its own revision no matter how many times you rewrite the page now.',
         'Pass newRevision=true when the page moves to a new stage rather than being polished further — most importantly when you first write back what you actually built over a page that until now held the plan. Folding is judged by clock and author, which cannot tell "still drafting" from "the plan became the thing"; only you know that, and without the flag the plan is quietly overwritten by its own outcome.',
         'rename moves the page to a new slug, keeping its id and its whole revision history — do not create a new page and delete the old one, that throws the history away.',
-        'The response tells you what the write did: rev is the revision it landed in, coalesced says whether it folded into your previous one, and previousBodyChars is how long the body was before you wrote. If previousBodyChars is much larger than what you just wrote, you replaced someone\'s work — check list_wiki_revisions before moving on.',
+        'The response tells you what the write did: rev is the revision it landed in, coalesced says whether it folded into your previous one, and previousBodyChars is how long the body was before you wrote. If previousBodyChars is much larger than what you just wrote, you replaced someone\'s work — check list_wiki_revisions before moving on. The body itself is not echoed back — bodyChars is its length now; re-read with get_wiki if you need the text.',
         'baseRev is optional and is how you avoid clobbering a concurrent edit: pass the rev you read, and the write is refused if the page moved on since. Use it when you read, think, then write.',
         'The response carries warnings[] when the page strays from the skeleton or reads like a log (status banners, dated headings, checklists, change-history sections, unmatched footnotes). The write is saved either way — fix what they point at and write again.',
         'The change also lands in the ground\'s history (list_events, entityType="wiki"), where the body is recorded as a length delta rather than a copy of the prose — the prose itself lives in the revisions.',
@@ -1330,7 +1386,41 @@ export function registerTools(server, { api }) {
         // 여기선 도구 호출 마크업 유출만 더한다 — 그건 MCP 인자 직렬화 사고라 이 층의 일이다.
         const warnings = (written?.warnings ?? [])
           .concat(toolMarkupCheck({ title, body: written?.body }));
-        return jsonResult(warnings.length ? { ...written, warnings } : written);
+        return jsonResult(slimWikiWrite(written, warnings));
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.registerTool(
+    'edit_wiki',
+    {
+      title: 'Change one passage of a wiki page',
+      description: [
+        'Replaces one passage of an existing wiki page without resending the body. Pass the exact text to replace (oldString) and what it becomes (newString) — the same contract as a code editor\'s Edit: oldString must occur **exactly once** on the page. If it is missing, or occurs more than once, nothing is written and the error says which; copy the text verbatim from get_wiki (whitespace and line breaks count) or include more surrounding text to make it unique. newString="" deletes the passage. Matching is literal, not a regex.',
+        'This is the normal way to fix a sentence, update a value, or correct one rule on a page that already exists. Use write_wiki when you are composing a page or rewriting several sections at once, and mode="append" there when a section is genuinely missing.',
+        'The edit is a revision like any other write: it folds into your previous write within 30 minutes unless newRevision=true, and baseRev refuses the edit when the page moved on since you read it. The response carries rev, coalesced, previousBodyChars and bodyChars, plus warnings[] when the page as a whole now strays from the skeleton — not the body.',
+        'Requires a write-scope token.',
+      ].join(' '),
+      inputSchema: z.object({
+        slug: z.string().min(1).describe('Ground slug.'),
+        page: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).describe('Page slug of an existing page.'),
+        oldString: z.string().min(1).describe('The exact text to replace. Must occur exactly once on the page.'),
+        newString: z.string().describe('The replacement text. "" deletes the passage.'),
+        baseRev: z.coerce.number().int().positive().optional().describe('The revision you read. If the page has moved past it, the edit is refused.'),
+        newRevision: z.union([z.boolean(), z.enum(['true', 'false']).transform(v => v === 'true')])
+          .optional().describe('Force a new revision instead of folding into your last write.'),
+      }),
+    },
+    async ({ slug, page, oldString, newString, baseRev, newRevision }) => {
+      try {
+        const payload = { slug: page, mode: 'edit', oldString, newString };
+        if (baseRev !== undefined) payload.baseRev = baseRev;
+        if (newRevision !== undefined) payload.newRevision = newRevision;
+        const written = await api.put(`/api/projects/${encodeURIComponent(slug)}/wiki`, payload);
+        // 마크업 유출 판정은 새로 들어간 조각에만 건다 — 본문 나머지는 이 호출이 쓴 게 아니다.
+        const warnings = (written?.warnings ?? [])
+          .concat(toolMarkupCheck({ newString }));
+        return jsonResult(slimWikiWrite(written, warnings));
       } catch (e) { return errorResult(e); }
     },
   );

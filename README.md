@@ -1,5 +1,7 @@
 # umtri-mcp
 
+[![Umtri MCP server](https://mcprush.com/badge/umtri-mcp/card.svg)](https://mcprush.com/to/umtri-mcp?ref=badge)
+
 MCP server for [Umtri](https://umtri.io) — give your AI coding agent a persistent map of your
 project's structure, dependencies, and bugs.
 
@@ -62,7 +64,7 @@ appear and then error, re-check the token and its scope — `read` tokens cannot
 
 **Plan loop** — `commit_plan`, `record_commit`
 
-**Wiki** — `list_wiki`, `get_wiki`, `list_wiki_revisions`, `write_wiki`, `delete_wiki`. The ground's
+**Wiki** — `list_wiki`, `get_wiki`, `list_wiki_revisions`, `write_wiki`, `edit_wiki`, `delete_wiki`. The ground's
 encyclopedia: pages form a table of contents (`parent`, `position`) read from an overview down,
 each has a kind, and every write comes back with warnings when a page strays from the skeleton.
 

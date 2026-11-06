@@ -160,7 +160,7 @@ it." That is not a diary entry, it is a hazard.
 
 ## The write tells you what is off
 
-`write_wiki` answers with `warnings[]` when the saved page strays from the
+`write_wiki` and `edit_wiki` answer with `warnings[]` when the saved page strays from the
 skeleton: no kind, no parent (outside the table of contents), a title that is
 not a plain noun, no lead, a status banner, a dated heading, a checklist, a
 change-history section, a top-level section other than Spec/Rules, a missing
@@ -217,11 +217,24 @@ separately. Do not split by document type — `mcp` and `mcp-architecture` are
 one page at two points in its life. Do not create a page per file, per sprint,
 or per meeting.
 
+## Choosing how to read
+
+Pages run long. `get_wiki` returns the whole body by default, and you rarely
+need it.
+
+| | |
+| --- | --- |
+| A page you have not seen | `view="outline"` — the lead and the heading tree with sizes |
+| One topic | `section="<heading or path>"` — that section with the footnotes it cites |
+| The exact lines to change | `find="<text>"` — matching lines with context, line-numbered; a block is an `edit_wiki` `oldString` |
+| About to `replace` the body | read it **in full** — an outline is not the body |
+
 ## Choosing how to write
 
 | | |
 | --- | --- |
-| The thing changed | `mode="replace"` — **read the page first** (`get_wiki`) |
+| The thing changed | `mode="replace"` — **read the page first** (`get_wiki`, in full) |
+| One passage is wrong on a long page | `edit_wiki` — the exact text and its replacement; it must match once, so copy from `get_wiki` |
 | The page lacks a whole topic you can add as its own `###` | `mode="replace"` with it folded in; `append` only if it truly stands alone at the end |
 | Crossing into a new stage | add `newRevision: true` |
 | A write went wrong | `list_wiki_revisions`, then `mode="restore"` with the rev |

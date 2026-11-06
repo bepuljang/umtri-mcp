@@ -64,6 +64,13 @@ Keep out:
 - **Tooling config with no runtime behaviour** — linter/formatter configs,
   editor settings, `.gitignore`.
 
+**Tooling that runs is in.** A build or deploy script, a simulator, a docs
+generator, a test that checks the repo's conventions — the team runs these, and
+deleting them changes how the team's work behaves even though the product does
+not. They go into a `tooling` trunk (`umtri://rules/trunk-kinds`), not under the
+app they serve and not out of the tree. The line is *runs* vs *inert*: a config
+file with no behaviour of its own stays out, the script that reads it is in.
+
 Point at documents instead of turning them into nodes: put the reference in the
 `description` of the node it explains (e.g. "propagation rules:
 `PRD-impact-analysis.md`"). The document stays findable exactly where someone
@@ -81,7 +88,8 @@ users* vs *read by us*.
 - `limb` = a category inside a trunk (e.g. `graph`, `table`, `dashboard`).
   How a trunk splits into limbs depends on its kind (`metadata.kind`): features
   for a front, domains for a server and its database (same names, no suffix),
-  capabilities for a library, parts for a device — one common limb per trunk.
+  capabilities for a library, parts for a device, what the tools do for tooling —
+  one common limb per trunk.
   See `umtri://rules/trunk-kinds`.
 - Do **not** create one limb per time period. Time is expressed through
   `season` and `created_at`, not by carving the tree into temporal slices.
@@ -110,7 +118,7 @@ questions about a ground.
 | `role_change_at`     | type-changed nodes                  | `string` — ISO date                                |
 | `role_change_reason` | type-changed nodes                  | `string` — short prose explaining the shift        |
 | `placeholder`        | intentionally-empty structure       | `true` — opts out of dormant cleanup suggestions   |
-| `kind`               | trunks                              | `front` \| `server` \| `database` \| `library` \| `device` |
+| `kind`               | trunks                              | `front` \| `server` \| `database` \| `library` \| `device` \| `tooling` |
 | `common`             | the one shared limb of a trunk      | `true` — see `umtri://rules/trunk-kinds`           |
 
 ## One file, multiple nodes

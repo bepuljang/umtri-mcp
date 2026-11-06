@@ -16,9 +16,11 @@ The schema accepts any combination. The MCP warns when violated but lets
 the data through (legacy migration, experimental use). For new authoring,
 follow the table strictly.
 
-**Skip-level traversal is allowed within structure**: `trunk → leaf`,
-`limb → leaf`, even `trunk → twig` are valid. The full descent
-`trunk → limb → twig → leaf → vein` is canonical, not mandatory.
+**Skip-level traversal is allowed below a limb**: `limb → leaf` and
+`trunk → twig` are valid. The full descent `trunk → limb → twig → leaf → vein`
+is canonical, not mandatory — but a trunk's direct children are limbs, never
+leaves (`trunk → leaf` warns with `trunk-direct-leaf`; see
+`umtri://rules/trunk-kinds`, "What earns a limb").
 
 ## Trunk = system-unit, not domain
 
@@ -32,8 +34,8 @@ Domains or feature areas (auth, payments, reservations, dashboard, …) are
 that spans the user-app and admin trunks" — fine. "Authentication is a
 trunk" — no.
 
-Record which of the five kinds the trunk is in `metadata.kind` (`front`,
-`server`, `database`, `library`, `device`). The kind decides how its limbs
+Record which of the six kinds the trunk is in `metadata.kind` (`front`,
+`server`, `database`, `library`, `device`, `tooling`). The kind decides how its limbs
 split — see `umtri://rules/trunk-kinds`.
 
 Naming convention (recommended, not enforced):
